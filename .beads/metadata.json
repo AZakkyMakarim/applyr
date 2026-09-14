@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "applyr",
+  "project_id": "00a939aa-a402-4559-8f44-b64337f97c88"
+}
