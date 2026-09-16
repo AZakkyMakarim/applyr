@@ -88,6 +88,40 @@ class AdapterHealth extends Model
         ])->save();
     }
 
+    /**
+     * Put a paused Adapter back on the schedule. The last failure and recent history
+     * are kept for reference; nothing runs until the next scheduled poll.
+     */
+    public function resume(): void
+    {
+        if (! $this->isPaused()) {
+            return;
+        }
+
+        $this->forceFill([
+            'status' => AdapterStatus::Healthy,
+            'broken_failures' => 0,
+            'transport_failures' => 0,
+            'first_failure_at' => null,
+        ])->save();
+    }
+
+    /**
+     * "Healthy", "Paused", or "Failing n of threshold" on the track of the last failure.
+     */
+    public function statusLabel(): string
+    {
+        $category = $this->last_failure_category;
+
+        return match ($this->status) {
+            AdapterStatus::Healthy => 'Healthy',
+            AdapterStatus::Paused => 'Paused',
+            AdapterStatus::Failing => $category === null
+                ? 'Failing'
+                : "Failing {$this->failuresFor($category)} of {$this->thresholdFor($category)}",
+        };
+    }
+
     public function thresholdFor(FailureCategory $category): int
     {
         return $category->isTransport() ? self::TRANSPORT_THRESHOLD : self::BROKEN_THRESHOLD;

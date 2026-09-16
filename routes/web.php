@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AdapterController;
 use App\Http\Controllers\ApplicationController;
 use App\Http\Controllers\EducationController;
 use App\Http\Controllers\ExperienceController;
@@ -27,3 +28,6 @@ Route::prefix('master-profile')->name('master-profile.')->group(function () {
     Route::resource('educations', EducationController::class)->only(['store', 'update', 'destroy']);
     Route::resource('projects', ProjectController::class)->only(['store', 'update', 'destroy']);
 });
+
+Route::get('adapters', [AdapterController::class, 'index'])->name('adapters.index');
+Route::patch('adapters/{platform}/resume', [AdapterController::class, 'resume'])->name('adapters.resume');
