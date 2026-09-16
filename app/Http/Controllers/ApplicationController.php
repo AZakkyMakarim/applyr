@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\ApplicationAction;
 use App\Enums\ApplicationStatus;
 use App\Models\Application;
 use App\Pdf\PdfRenderer;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -36,6 +38,21 @@ class ApplicationController extends Controller
         return view('applications.show', [
             'application' => $application,
         ]);
+    }
+
+    /**
+     * Applies a named action, refusing one the Application's current status doesn't allow.
+     */
+    public function transition(Application $application, ApplicationAction $action): RedirectResponse
+    {
+        $redirect = to_route('applications.show', $application);
+        $target = $action->targetFor($application);
+
+        if ($target === null || ! $application->transitionTo($target)) {
+            return $redirect->with('error', "Application cannot be {$action->pastTense()} while it is {$application->status->label()}.");
+        }
+
+        return $redirect->with('status', "Application {$action->pastTense()}.");
     }
 
     public function cv(Request $request, Application $application): StreamedResponse

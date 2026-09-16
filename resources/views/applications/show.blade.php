@@ -16,8 +16,26 @@
             <p class="mt-1 text-gray-700">{{ $job->company_name }} · {{ $job->platform->label() }}</p>
         </div>
 
-        @include('applications._status-badge', ['status' => $application->status])
+        <div class="flex flex-wrap items-center gap-3">
+            @include('applications._status-badge', ['status' => $application->status])
+
+            @foreach (\App\Enums\ApplicationAction::availableFor($application) as $action)
+                <form method="POST" action="{{ route('applications.transition', [$application, $action]) }}">
+                    @csrf
+                    @method('PATCH')
+                    <button type="submit" class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ $action->label() }}</button>
+                </form>
+            @endforeach
+        </div>
     </div>
+
+    @if (session('status'))
+        <p class="mt-4 rounded-md bg-green-50 px-4 py-2 text-sm text-green-800">{{ session('status') }}</p>
+    @endif
+
+    @if (session('error'))
+        <p class="mt-4 rounded-md bg-red-50 px-4 py-2 text-sm text-red-800">{{ session('error') }}</p>
+    @endif
 
     <section class="mt-6 rounded-md border border-gray-200 bg-white p-4">
         <h2 class="text-lg font-semibold">Job</h2>

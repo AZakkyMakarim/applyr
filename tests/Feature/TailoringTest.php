@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Ai\AiProvider;
 use App\Ai\Exceptions\ProviderException;
 use App\Ai\Exceptions\RateLimitedException;
+use App\Enums\ApplicationAction;
 use App\Enums\ApplicationStatus;
 use App\Jobs\TailorApplication;
 use App\Models\Application;
@@ -315,6 +316,94 @@ class TailoringTest extends TestCase
         $this->assertSame(ApplicationStatus::Rejected, $application->fresh()->status);
         $this->assertSame(0, TailoredApplication::count());
         $this->assertSame([], $this->pdfRenderer->rendered);
+    }
+
+    public function test_rejecting_a_pending_application_before_its_tailoring_runs_prevents_any_gemini_call(): void
+    {
+        Http::fake();
+        $application = $this->applicationFor('rejected-while-queued');
+
+        $this->patch(route('applications.transition', [$application, ApplicationAction::Reject]))->assertRedirect();
+        TailorApplication::dispatch($application);
+
+        Http::assertNothingSent();
+        $this->assertSame(ApplicationStatus::Rejected, $application->fresh()->status);
+        $this->assertSame(0, TailoredApplication::count());
+    }
+
+    /**
+     * @return array<string, array{bool}>
+     */
+    public static function tailoringOutcomes(): array
+    {
+        return [
+            'valid response' => [true],
+            'every attempt invalid' => [false],
+        ];
+    }
+
+    #[DataProvider('tailoringOutcomes')]
+    public function test_a_reject_while_tailoring_is_in_flight_is_not_overwritten(bool $valid): void
+    {
+        $application = $this->applicationFor('rejected-in-flight');
+        $content = $this->validContent();
+        $content['professional_summary'] = $valid ? 'Valid summary.' : '';
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => function () use ($application, $content) {
+                $this->patch(route('applications.transition', [$application, ApplicationAction::Reject]));
+
+                return Http::response($this->geminiEnvelope($content));
+            },
+            'api.telegram.org/*' => Http::response(['ok' => true]),
+        ]);
+
+        TailorApplication::dispatch($application);
+
+        $application->refresh();
+        $this->assertSame(ApplicationStatus::Rejected, $application->status);
+        $this->assertSame(ApplicationStatus::PendingTailoring, $application->previous_status);
+        $this->assertNotNull($application->rejected_at);
+        $this->assertNull($application->current_tailored_application_id);
+        $this->assertSame(0, TailoredApplication::count());
+        Http::assertNotSent(fn (Request $request) => $request->url() === self::TELEGRAM_URL);
+    }
+
+    public function test_a_successful_regeneration_replaces_the_current_tailored_application(): void
+    {
+        $application = $this->applicationFor('regenerated');
+        $old = $this->giveEarlierTailoredApplication($application);
+        $content = $this->validContent();
+        $content['professional_summary'] = 'Regenerated summary.';
+        $this->fakeGeminiSequence($content);
+
+        $this->patch(route('applications.transition', [$application, ApplicationAction::Regenerate]))->assertRedirect();
+
+        $application->refresh();
+        $this->assertSame(ApplicationStatus::NeedsReview, $application->status);
+        $this->assertNotSame($old->id, $application->current_tailored_application_id);
+        $this->assertSame('Regenerated summary.', $application->currentTailoredApplication->cv_data['personal_info']['professional_summary']);
+        $this->assertSame(2, $application->tailoredApplications()->count());
+    }
+
+    public function test_a_failed_regeneration_leaves_the_old_documents_current_and_viewable(): void
+    {
+        $application = $this->applicationFor('regeneration-failed');
+        $old = $this->giveEarlierTailoredApplication($application);
+        $invalid = $this->validContent();
+        $invalid['professional_summary'] = '';
+        $this->fakeGeminiSequence($invalid, $invalid, $invalid);
+
+        $this->patch(route('applications.transition', [$application, ApplicationAction::Regenerate]))->assertRedirect();
+
+        $application->refresh();
+        $this->assertSame(ApplicationStatus::TailoringFailed, $application->status);
+        $this->assertSame($old->id, $application->current_tailored_application_id);
+        $this->get(route('applications.show', $application))
+            ->assertOk()
+            ->assertSee('src="'.route('applications.cv', $application).'"', false);
+        $this->assertSame('%PDF-old-cv', $this->get(route('applications.cv', $application))->streamedContent());
+        $this->assertSame('%PDF-old-cover-letter', $this->get(route('applications.cover-letter', $application))->streamedContent());
     }
 
     public function test_a_valid_first_attempt_is_used_without_regenerating(): void
@@ -743,6 +832,30 @@ class TailoringTest extends TestCase
         ]);
 
         return $job->application()->create(['status' => $status]);
+    }
+
+    /**
+     * Puts the Application in needs_review with an earlier TailoredApplication, and its PDFs, as its current one.
+     */
+    private function giveEarlierTailoredApplication(Application $application): TailoredApplication
+    {
+        $directory = "tailored-applications/{$application->id}/old";
+        Storage::disk(PdfRenderer::DISK)->put("{$directory}/cv.pdf", '%PDF-old-cv');
+        Storage::disk(PdfRenderer::DISK)->put("{$directory}/cover_letter.pdf", '%PDF-old-cover-letter');
+
+        $tailored = $application->tailoredApplications()->create([
+            'cv_data' => [],
+            'cover_letter_data' => [],
+            'cv_pdf_path' => "{$directory}/cv.pdf",
+            'cover_letter_pdf_path' => "{$directory}/cover_letter.pdf",
+        ]);
+
+        $application->update([
+            'status' => ApplicationStatus::NeedsReview,
+            'current_tailored_application_id' => $tailored->id,
+        ]);
+
+        return $tailored;
     }
 
     /**

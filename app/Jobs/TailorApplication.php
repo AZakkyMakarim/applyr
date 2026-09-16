@@ -87,8 +87,9 @@ class TailorApplication implements ShouldQueue
         }
 
         // Every attempt failed validation; the user sees it on the dashboard, with no Telegram message.
+        // A reject saved while tailoring ran stands.
         if ($aiResponse === null) {
-            $application->update(['status' => ApplicationStatus::TailoringFailed]);
+            $application->transitionTo(ApplicationStatus::TailoringFailed);
 
             return;
         }
@@ -100,7 +101,7 @@ class TailorApplication implements ShouldQueue
         $coverLetterData = $snapshots->coverLetterData();
         ['cv_pdf_path' => $cvPdfPath, 'cover_letter_pdf_path' => $coverLetterPdfPath] = $documentRenderer->render($application, $cvData, $coverLetterData);
 
-        DB::transaction(function () use ($application, $cvData, $coverLetterData, $cvPdfPath, $coverLetterPdfPath) {
+        $readyForReview = DB::transaction(function () use ($application, $cvData, $coverLetterData, $cvPdfPath, $coverLetterPdfPath) {
             $tailoredApplication = $application->tailoredApplications()->create([
                 'cv_data' => $cvData,
                 'cover_letter_data' => $coverLetterData,
@@ -108,11 +109,21 @@ class TailorApplication implements ShouldQueue
                 'cover_letter_pdf_path' => $coverLetterPdfPath,
             ]);
 
-            $application->update([
+            $moved = $application->transitionTo(ApplicationStatus::NeedsReview, [
                 'current_tailored_application_id' => $tailoredApplication->id,
-                'status' => ApplicationStatus::NeedsReview,
             ]);
+
+            // Rejected while tailoring ran: the reject stands and these documents are dropped.
+            if (! $moved) {
+                $tailoredApplication->delete();
+            }
+
+            return $moved;
         });
+
+        if (! $readyForReview) {
+            return;
+        }
 
         // The documents are ready even if the notification can't be delivered.
         rescue(fn () => $notifier->send(implode("\n", [
