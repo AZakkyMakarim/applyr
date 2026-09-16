@@ -31,10 +31,11 @@ class TestHarnessTest extends TestCase
         $this->assertTrue(DB::table('cache')->where('key', 'queued')->exists());
     }
 
-    public function test_queue_tables_leave_the_jobs_table_name_free_for_the_domain(): void
+    public function test_the_queue_uses_queue_jobs_so_jobs_holds_domain_jobs(): void
     {
         $this->assertSame('queue_jobs', config('queue.connections.database.table'));
-        $this->assertFalse(Schema::hasTable('jobs'));
+        $this->assertTrue(Schema::hasTable('queue_jobs'));
+        $this->assertTrue(Schema::hasColumn('jobs', 'external_id'));
     }
 
     // Both tests write one row; whichever runs second would see two rows if the database leaked.

@@ -11,6 +11,9 @@ return [
     'adapters' => [
         // Maximum result pages an Adapter fetches per SearchProfile per run.
         'page_cap' => (int) env('APPLYR_ADAPTER_PAGE_CAP', 5),
+
+        // Pause between consecutive requests to one platform, in milliseconds.
+        'request_delay_ms' => (int) env('APPLYR_ADAPTER_REQUEST_DELAY_MS', 2000),
     ],
 
     'tailoring' => [

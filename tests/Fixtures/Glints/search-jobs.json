@@ -1,0 +1,359 @@
+{
+  "data": {
+    "searchJobsV3": {
+      "hasMore": true,
+      "jobsInPage": [
+        {
+          "CountryCode": "ID",
+          "benefits": [
+            {
+              "benefit": "BPJS_TENAGA_KERJA_INSURANCE_AND_HEALTH",
+              "description": "",
+              "title": "Work Insurance"
+            },
+            {
+              "benefit": "CAREER_GROWTH",
+              "description": "",
+              "title": "Career Path"
+            },
+            {
+              "benefit": "THR_FINANCIAL_BENEFITS",
+              "description": "",
+              "title": "THR"
+            },
+            {
+              "benefit": "MEDICAL_COVERAGE",
+              "description": "",
+              "title": "Health Insurance"
+            }
+          ],
+          "city": null,
+          "citySubDivision": null,
+          "company": {
+            "brandName": null,
+            "id": "8aa649dc-29f4-45ad-8b63-5ab280cd2343",
+            "name": "PT. BEONE OPTIMA SOLUSI"
+          },
+          "country": {
+            "code": "ID",
+            "name": "Indonesia"
+          },
+          "createdAt": "2026-07-16T16:28:56.823Z",
+          "descriptionJsonString": null,
+          "educationLevel": "HIGH_SCHOOL",
+          "expiryDate": "2026-10-16",
+          "externalApplyURL": null,
+          "hierarchicalJobCategory": {
+            "id": "b16aede4-ad2c-4639-89d9-4614c19c3481",
+            "level": 3,
+            "name": "Full Stack Developer"
+          },
+          "id": "bc932c0b-3749-4e8c-8195-a11831888002",
+          "isRemote": false,
+          "location": {
+            "formattedName": "Cipondoh",
+            "id": "a339875d-10ab-4a0c-a89e-3bc719a8eaaa",
+            "level": 4,
+            "name": "Cipondoh",
+            "parents": [
+              {
+                "formattedName": "Tangerang",
+                "id": "ae3c458e-5947-4833-8f1b-e001ce2fad1d",
+                "level": 3,
+                "name": "Tangerang"
+              },
+              {
+                "formattedName": "Banten",
+                "id": "82f248c3-3fb3-4600-98fe-4afb47d7558d",
+                "level": 2,
+                "name": "Banten"
+              },
+              {
+                "formattedName": "Indonesia",
+                "id": "7542a4d7-4324-4f76-ae1f-2e37ffb1198b",
+                "level": 1,
+                "name": "Indonesia"
+              }
+            ]
+          },
+          "maxYearsOfExperience": 3,
+          "minYearsOfExperience": 1,
+          "salaries": [
+            {
+              "CurrencyCode": "IDR",
+              "maxAmount": 8000000,
+              "minAmount": 5500000,
+              "salaryMode": "MONTH",
+              "salaryType": "BASIC"
+            }
+          ],
+          "skills": [
+            {
+              "mustHave": true,
+              "skill": {
+                "id": "db1718f4-85e8-4e62-a9e3-e57b0993aabd",
+                "name": "AI Systems"
+              }
+            },
+            {
+              "mustHave": true,
+              "skill": {
+                "id": "8a5d6400-da5f-44c1-847a-bca42112c7e2",
+                "name": "GIT"
+              }
+            },
+            {
+              "mustHave": true,
+              "skill": {
+                "id": "104795e3-a3bc-4ba1-b6ec-ce9be6d5b120",
+                "name": "JavaScript"
+              }
+            },
+            {
+              "mustHave": true,
+              "skill": {
+                "id": "e4eb37fb-6847-468c-99e4-4911211f3ee3",
+                "name": "C#"
+              }
+            },
+            {
+              "mustHave": true,
+              "skill": {
+                "id": "1031669b-a066-44d3-a752-b2fde1ed6785",
+                "name": "Node.js"
+              }
+            },
+            {
+              "mustHave": true,
+              "skill": {
+                "id": "fee73e25-f226-42d1-a5ab-30c2fe553499",
+                "name": "REST API"
+              }
+            },
+            {
+              "mustHave": true,
+              "skill": {
+                "id": "7900f778-3de4-46c8-9833-8329ea13adff",
+                "name": "SQL"
+              }
+            },
+            {
+              "mustHave": true,
+              "skill": {
+                "id": "149fc019-35bd-469d-9266-15c2869e7c94",
+                "name": ".NET"
+              }
+            },
+            {
+              "mustHave": true,
+              "skill": {
+                "id": "4a26f657-6e30-4585-b4d0-36679b2fb9f3",
+                "name": "SAP"
+              }
+            },
+            {
+              "mustHave": true,
+              "skill": {
+                "id": "e7621a65-3b31-4950-af32-0adc055f2840",
+                "name": "Next.Js"
+              }
+            }
+          ],
+          "source": "NATIVE",
+          "status": "OPEN",
+          "title": "software engineer",
+          "type": "CONTRACT",
+          "updatedAt": "2026-09-15T03:55:38.08Z",
+          "workArrangementOption": "ONSITE"
+        },
+        {
+          "CountryCode": "ID",
+          "benefits": null,
+          "city": {
+            "id": "133413",
+            "name": "Jakarta Selatan"
+          },
+          "citySubDivision": {
+            "id": "0xc00e432e50",
+            "name": "Setiabudi"
+          },
+          "company": {
+            "brandName": null,
+            "id": "9c00f694-4d54-4879-9be5-f86ccf06bcc8",
+            "name": "bitbybit"
+          },
+          "country": {
+            "code": "ID",
+            "name": "Indonesia"
+          },
+          "createdAt": "2025-09-13T08:35:15.107Z",
+          "descriptionJsonString": null,
+          "educationLevel": "BACHELOR_DEGREE",
+          "expiryDate": "2026-10-16",
+          "externalApplyURL": null,
+          "hierarchicalJobCategory": {
+            "id": "b16aede4-ad2c-4639-89d9-4614c19c3481",
+            "level": 3,
+            "name": "Full Stack Developer"
+          },
+          "id": "7eab7cb1-f34e-46ae-a81d-de2e55622b90",
+          "isRemote": true,
+          "location": {
+            "formattedName": "Setiabudi",
+            "id": "1a26bce1-b0a8-4677-a380-79701d53185a",
+            "level": 4,
+            "name": "Setiabudi",
+            "parents": [
+              {
+                "formattedName": "Jakarta Selatan",
+                "id": "078b37b2-e791-4739-958e-c29192e5df3e",
+                "level": 3,
+                "name": "Jakarta Selatan"
+              },
+              {
+                "formattedName": "DKI Jakarta",
+                "id": "78d63064-78a1-4577-8516-036a6c5e903e",
+                "level": 2,
+                "name": "DKI Jakarta"
+              },
+              {
+                "formattedName": "Indonesia",
+                "id": "7542a4d7-4324-4f76-ae1f-2e37ffb1198b",
+                "level": 1,
+                "name": "Indonesia"
+              }
+            ]
+          },
+          "maxYearsOfExperience": 3,
+          "minYearsOfExperience": 1,
+          "salaries": null,
+          "skills": [
+            {
+              "mustHave": true,
+              "skill": {
+                "id": "d159ceb5-8841-4f41-a2ca-59d68a410d94",
+                "name": "TypeScript"
+              }
+            },
+            {
+              "mustHave": true,
+              "skill": {
+                "id": "1f0593c5-4944-4539-9180-33b329ca1ca3",
+                "name": "React Native"
+              }
+            },
+            {
+              "mustHave": true,
+              "skill": {
+                "id": "104795e3-a3bc-4ba1-b6ec-ce9be6d5b120",
+                "name": "JavaScript"
+              }
+            },
+            {
+              "mustHave": true,
+              "skill": {
+                "id": "80bb1021-700b-47d4-9916-f2cc2e26a76e",
+                "name": "Kubernetes"
+              }
+            }
+          ],
+          "source": "NATIVE",
+          "status": "OPEN",
+          "title": "Fullstack Software Engineer for AI Startup",
+          "type": "FULL_TIME",
+          "updatedAt": "2026-09-15T14:42:39.853Z",
+          "workArrangementOption": "REMOTE"
+        },
+        {
+          "CountryCode": "ID",
+          "benefits": null,
+          "city": {
+            "id": "28570",
+            "name": "Malang"
+          },
+          "citySubDivision": null,
+          "company": {
+            "brandName": null,
+            "id": "9152ea0b-0133-4b55-afde-657ab136a574",
+            "name": "Sekawan Media"
+          },
+          "country": {
+            "code": "ID",
+            "name": "Indonesia"
+          },
+          "createdAt": "2025-09-03T07:33:40.29Z",
+          "descriptionJsonString": null,
+          "educationLevel": "HIGH_SCHOOL",
+          "expiryDate": "2026-10-10",
+          "externalApplyURL": null,
+          "hierarchicalJobCategory": {
+            "id": "ae3ffc6a-ca09-4fb3-9a81-47066a6c7ec3",
+            "level": 3,
+            "name": "Quality Inspector"
+          },
+          "id": "a0c1f274-6977-4957-810d-0b733589e298",
+          "isRemote": false,
+          "location": {
+            "formattedName": "Singosari",
+            "id": "be2c0abe-3f4e-41ff-a0be-8761be42f3b6",
+            "level": 4,
+            "name": "Singosari",
+            "parents": [
+              {
+                "formattedName": "Kab. Malang",
+                "id": "62fd1074-336e-4479-8425-b578fe3a03d0",
+                "level": 3,
+                "name": "Malang"
+              },
+              {
+                "formattedName": "Jawa Timur",
+                "id": "bc26ec98-d599-44cb-84e7-c92f6d87e102",
+                "level": 2,
+                "name": "Jawa Timur"
+              },
+              {
+                "formattedName": "Indonesia",
+                "id": "7542a4d7-4324-4f76-ae1f-2e37ffb1198b",
+                "level": 1,
+                "name": "Indonesia"
+              }
+            ]
+          },
+          "maxYearsOfExperience": 1,
+          "minYearsOfExperience": 0,
+          "salaries": null,
+          "skills": [
+            {
+              "mustHave": true,
+              "skill": {
+                "id": "6cef5cb1-5088-4a00-a53a-de71ac18206e",
+                "name": "Software Testing"
+              }
+            },
+            {
+              "mustHave": true,
+              "skill": {
+                "id": "ec7961c7-fa45-42b8-b948-62cf15daab43",
+                "name": "Quality Control"
+              }
+            },
+            {
+              "mustHave": true,
+              "skill": {
+                "id": "a821a4d5-4012-4287-90d6-0b0af906790e",
+                "name": "Report Writing"
+              }
+            }
+          ],
+          "source": "NATIVE",
+          "status": "OPEN",
+          "title": "Intership - Software Quality Control",
+          "type": "INTERNSHIP",
+          "updatedAt": "2026-09-14T01:41:01.832Z",
+          "workArrangementOption": "HYBRID"
+        }
+      ]
+    }
+  },
+  "isAuthenticated": false
+}

@@ -1,0 +1,15 @@
+{
+  "data": {
+    "searchHierarchicalLocations": {
+      "list": [
+        {
+          "formattedName": "Jakarta Selatan",
+          "id": "078b37b2-e791-4739-958e-c29192e5df3e",
+          "level": 3,
+          "name": "Jakarta Selatan"
+        }
+      ]
+    }
+  },
+  "isAuthenticated": false
+}

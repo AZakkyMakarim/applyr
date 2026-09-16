@@ -1,0 +1,17 @@
+{
+  "data": null,
+  "errors": [
+    {
+      "message": "Cannot query field \"titel\" on type \"Job\". Did you mean \"title\"?",
+      "locations": [
+        {
+          "line": 1,
+          "column": 97
+        }
+      ],
+      "extensions": {
+        "code": "GRAPHQL_VALIDATION_FAILED"
+      }
+    }
+  ]
+}

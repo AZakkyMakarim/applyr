@@ -1,0 +1,20 @@
+{
+  "data": null,
+  "errors": [
+    {
+      "message": "please login for more information",
+      "locations": [
+        {
+          "line": 2,
+          "column": 3
+        }
+      ],
+      "path": [
+        "searchJobsV3"
+      ],
+      "extensions": {
+        "code": "NO_PERMISSION"
+      }
+    }
+  ]
+}

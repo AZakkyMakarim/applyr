@@ -1,0 +1,249 @@
+{
+  "data": {
+    "searchJobsV3": {
+      "hasMore": true,
+      "jobsInPage": [
+        {
+          "CountryCode": "ID",
+          "benefits": [
+            {
+              "benefit": "THR_FINANCIAL_BENEFITS",
+              "description": "",
+              "title": "THR"
+            },
+            {
+              "benefit": "CAREER_GROWTH",
+              "description": "",
+              "title": "Career Path"
+            },
+            {
+              "benefit": "PERFORM_BONUS_FINANCIAL_BENEFITS",
+              "description": "",
+              "title": "Perform Bonus"
+            }
+          ],
+          "city": null,
+          "citySubDivision": null,
+          "company": {
+            "brandName": null,
+            "id": "a06a311c-0bfa-43a2-b3ba-f439e88de04f",
+            "name": "Medor.id"
+          },
+          "country": {
+            "code": "ID",
+            "name": "Indonesia"
+          },
+          "createdAt": "2026-09-11T09:08:47.179Z",
+          "descriptionJsonString": null,
+          "educationLevel": "DIPLOMA",
+          "expiryDate": "2026-10-12",
+          "externalApplyURL": null,
+          "hierarchicalJobCategory": {
+            "id": "e602d9fb-8a70-4ba7-916d-d0e49c6c5516",
+            "level": 3,
+            "name": "Accountant"
+          },
+          "id": "3b92f138-5858-46bc-bc98-dbb8ebe0ce3a",
+          "isRemote": false,
+          "location": {
+            "formattedName": "Kuta Utara",
+            "id": "6d0dde78-c0d3-4241-b9d3-5b883c36adf7",
+            "level": 4,
+            "name": "Kuta Utara",
+            "parents": [
+              {
+                "formattedName": "Kab. Badung",
+                "id": "c442c866-1211-4b32-87c0-48e631790c40",
+                "level": 3,
+                "name": "Badung"
+              },
+              {
+                "formattedName": "Bali",
+                "id": "c7aaf839-7091-4a64-95a9-a25642d02aba",
+                "level": 2,
+                "name": "Bali"
+              },
+              {
+                "formattedName": "Indonesia",
+                "id": "7542a4d7-4324-4f76-ae1f-2e37ffb1198b",
+                "level": 1,
+                "name": "Indonesia"
+              }
+            ]
+          },
+          "maxYearsOfExperience": 3,
+          "minYearsOfExperience": 1,
+          "salaries": [
+            {
+              "CurrencyCode": "IDR",
+              "maxAmount": 10000000,
+              "minAmount": 8000000,
+              "salaryMode": "MONTH",
+              "salaryType": "BASIC"
+            }
+          ],
+          "skills": [
+            {
+              "mustHave": true,
+              "skill": {
+                "id": "63666b31-8c50-4429-89ea-8626d23415f5",
+                "name": "Accounting"
+              }
+            },
+            {
+              "mustHave": true,
+              "skill": {
+                "id": "75ab496c-912d-453e-90bc-526e408d7254",
+                "name": "Xero"
+              }
+            },
+            {
+              "mustHave": true,
+              "skill": {
+                "id": "5854a5e8-6203-4d20-a279-2e3f28930a64",
+                "name": "English Language"
+              }
+            }
+          ],
+          "source": "NATIVE",
+          "status": "OPEN",
+          "title": "Junior Accountant",
+          "type": "FULL_TIME",
+          "updatedAt": "2026-09-14T09:09:13.054Z",
+          "workArrangementOption": "ONSITE"
+        },
+        {
+          "CountryCode": "ID",
+          "benefits": [
+            {
+              "benefit": "BPJS_TENAGA_KERJA_INSURANCE_AND_HEALTH",
+              "description": "",
+              "title": "Work Insurance"
+            },
+            {
+              "benefit": "THR_FINANCIAL_BENEFITS",
+              "description": "",
+              "title": "THR"
+            },
+            {
+              "benefit": "MEDICAL_COVERAGE",
+              "description": "",
+              "title": "Health Insurance"
+            }
+          ],
+          "city": null,
+          "citySubDivision": null,
+          "company": {
+            "brandName": null,
+            "id": "f168f242-d8b3-46ed-adcb-289b53478d27",
+            "name": "Kinnas Batik"
+          },
+          "country": {
+            "code": "ID",
+            "name": "Indonesia"
+          },
+          "createdAt": "2026-09-15T07:17:52.612Z",
+          "descriptionJsonString": null,
+          "educationLevel": "BACHELOR_DEGREE",
+          "expiryDate": "2026-10-16",
+          "externalApplyURL": null,
+          "hierarchicalJobCategory": {
+            "id": "e602d9fb-8a70-4ba7-916d-d0e49c6c5516",
+            "level": 3,
+            "name": "Accountant"
+          },
+          "id": "4c1ccc5f-6ef0-4df8-9055-1a20c157698d",
+          "isRemote": false,
+          "location": {
+            "formattedName": "Tengah Tani",
+            "id": "5bec637a-7c89-4a58-9872-facefeaca06f",
+            "level": 4,
+            "name": "Tengah Tani",
+            "parents": [
+              {
+                "formattedName": "Kab. Cirebon",
+                "id": "a94ecde6-ae27-4849-be89-03384ed6086c",
+                "level": 3,
+                "name": "Cirebon"
+              },
+              {
+                "formattedName": "Jawa Barat",
+                "id": "06c9e480-42e7-4f11-9d6c-67ad64ccc0f6",
+                "level": 2,
+                "name": "Jawa Barat"
+              },
+              {
+                "formattedName": "Indonesia",
+                "id": "7542a4d7-4324-4f76-ae1f-2e37ffb1198b",
+                "level": 1,
+                "name": "Indonesia"
+              }
+            ]
+          },
+          "maxYearsOfExperience": 3,
+          "minYearsOfExperience": 1,
+          "salaries": [
+            {
+              "CurrencyCode": "IDR",
+              "maxAmount": 4000000,
+              "minAmount": 3000000,
+              "salaryMode": "MONTH",
+              "salaryType": "BASIC"
+            }
+          ],
+          "skills": [
+            {
+              "mustHave": true,
+              "skill": {
+                "id": "8836ed5d-e374-4e6f-8226-cb3fa3ff22a1",
+                "name": "Tax Accounting"
+              }
+            },
+            {
+              "mustHave": true,
+              "skill": {
+                "id": "6deb2d03-4be2-45fb-a420-50f0782b829e",
+                "name": "Financial Analysis"
+              }
+            },
+            {
+              "mustHave": true,
+              "skill": {
+                "id": "63666b31-8c50-4429-89ea-8626d23415f5",
+                "name": "Accounting"
+              }
+            },
+            {
+              "mustHave": true,
+              "skill": {
+                "id": "48fba095-03ee-4720-a5ef-27956668ed54",
+                "name": "Microsoft Excel"
+              }
+            },
+            {
+              "mustHave": true,
+              "skill": {
+                "id": "85571c34-aacb-4554-b92d-e4a6aaadf263",
+                "name": "Income Tax"
+              }
+            },
+            {
+              "mustHave": true,
+              "skill": {
+                "id": "2017535c-cc49-4bd6-a2cf-af170b89adc1",
+                "name": "Bookkeeping"
+              }
+            }
+          ],
+          "source": "NATIVE",
+          "status": "OPEN",
+          "title": "Accountant",
+          "type": "FULL_TIME",
+          "updatedAt": "2026-09-15T07:17:52.612Z",
+          "workArrangementOption": "ONSITE"
+        }
+      ]
+    }
+  },
+  "isAuthenticated": false
+}
