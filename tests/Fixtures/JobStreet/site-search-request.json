@@ -1,0 +1,53 @@
+{
+  "_source": "jobSearchV7 variables the id.jobstreet.com search page itself sent for /id/software-engineer-jobs/in-Jakarta-Raya?daterange=7, read verbatim from the Apollo cache key in its server-rendered SEEK_APOLLO_DATA (2026-09-16). Headers are the set the page's GraphQL client sends; x-custom-features is required, without it jobSearchV7 answers UNSTABLE_QUERY_ERROR. URL query param -> filter mapping from the page's JS bundle: daterange=N -> listedAt 'Nd'; worktype FULL_TIME/PART_TIME/CONTRACT/CASUAL -> workTypeId 242/243/244/245; workarrangement ON_SITE/HYBRID/REMOTE -> workArrangementId 1/2/3; sortmode LISTED_DATE -> sort 'listedAt'.",
+  "method": "POST",
+  "url": "https://id.jobstreet.com/graphql",
+  "headers": {
+    "Accept": "*/*",
+    "Accept-Language": "en-US,en;q=0.9,id;q=0.8",
+    "Content-Type": "application/json",
+    "Origin": "https://id.jobstreet.com",
+    "Referer": "https://id.jobstreet.com/",
+    "sec-ch-ua": "\"Chromium\";v=\"128\", \"Not;A=Brand\";v=\"24\", \"Google Chrome\";v=\"128\"",
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": "\"Windows\"",
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-origin",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+    "x-custom-features": "application/features.seek.all+json"
+  },
+  "variables": {
+    "params": {
+      "responseConfig": {
+        "enrichment": {
+          "relatedSearchesCount": 12,
+          "suggestions": ["locationV1", "queryParamLabelsV1", "sabFilterV1", "organisationV1", "relatedSearchesV1"]
+        },
+        "page": 1,
+        "pageSize": 30,
+        "representations": ["uiV1"],
+        "results": ["jobs"]
+      },
+      "searchContext": {
+        "brand": "jobstreet",
+        "channel": "web",
+        "intent": "SEARCH",
+        "solVisitorId": "5b9c23ee-44df-4e0a-af07-c47dc28145bf",
+        "source": "FE_SERP"
+      },
+      "searchIntent": {
+        "country": "ID",
+        "distanceKms": 50,
+        "filter": {
+          "listedAt": "7d"
+        },
+        "locale": "id-ID",
+        "sort": "score",
+        "text": "software engineer",
+        "where": ["Jakarta Raya"]
+      },
+      "sessionId": "795949a5-4e18-4886-830e-5e66bc0af638"
+    }
+  }
+}

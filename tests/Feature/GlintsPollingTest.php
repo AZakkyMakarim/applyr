@@ -44,6 +44,11 @@ class GlintsPollingTest extends TestCase
         parent::setUp();
 
         Sleep::fake();
+
+        // The poll runs every Adapter; JobStreet finds nothing so only Glints Jobs are stored.
+        Http::fake(['id.jobstreet.com/*' => Http::response(
+            file_get_contents(base_path('tests/Fixtures/JobStreet/search-jobs-no-results.json')),
+        )]);
     }
 
     public function test_polling_normalizes_a_glints_result_into_a_job(): void

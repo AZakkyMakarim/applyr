@@ -1,0 +1,1 @@
+{"errors":[{"message":"Cannot query field \"expiresAt\" on type \"JobSearchV7Job\".","locations":[{"line":1,"column":105}],"extensions":{"code":"GRAPHQL_VALIDATION_FAILED"}},{"message":"Cannot query field \"expiryDate\" on type \"JobSearchV7Job\".","locations":[{"line":1,"column":115}],"extensions":{"code":"GRAPHQL_VALIDATION_FAILED"}}]}

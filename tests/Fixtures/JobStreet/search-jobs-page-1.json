@@ -1,0 +1,147 @@
+{
+  "data": {
+    "jobSearchV7": {
+      "results": {
+        "jobs": [
+          {
+            "id": "94675692",
+            "title": "Quality Assurance Engineer",
+            "abstract": "Memastikan kualitas aplikasi melalui manual testing, validasi data, dan pengujian API.",
+            "url": null,
+            "advertiser": {
+              "id": "60228156",
+              "name": "PT Abhimata Persada"
+            },
+            "organisation": {
+              "id": "430079",
+              "name": "Abhimata Persada"
+            },
+            "location": {
+              "id": "2030500",
+              "displayName": {
+                "text": "Jakarta Raya"
+              }
+            },
+            "listedAt": {
+              "dateTimeUtc": "2026-09-16T09:36:13.000Z"
+            },
+            "salary": {
+              "period": "monthly",
+              "min": 8000000,
+              "max": 12000000,
+              "currency": "IDR"
+            },
+            "workArrangements": [
+              {
+                "id": "1",
+                "label": {
+                  "text": "Kantor"
+                }
+              }
+            ],
+            "cjs": {
+              "workTypes": [
+                {
+                  "sourceId": "244"
+                }
+              ]
+            }
+          },
+          {
+            "id": "94674962",
+            "title": "Virtual Desktop Engineer",
+            "abstract": "Benefits to support your physical, mental and financial wellbeing including comprehensive medical and life insurance cover, the option to join...",
+            "url": null,
+            "advertiser": {
+              "id": "61940454",
+              "name": "Macquarie Group"
+            },
+            "organisation": {
+              "id": "473",
+              "name": "Macquarie Group"
+            },
+            "location": {
+              "id": "24473",
+              "displayName": {
+                "text": "Indonesia"
+              }
+            },
+            "listedAt": {
+              "dateTimeUtc": "2026-09-16T08:56:58.000Z"
+            },
+            "salary": {
+              "period": "monthly",
+              "min": 5114000,
+              "max": 6575000,
+              "currency": "IDR"
+            },
+            "workArrangements": [
+              {
+                "id": "2",
+                "label": {
+                  "text": "Hibrid"
+                }
+              }
+            ],
+            "cjs": {
+              "workTypes": [
+                {
+                  "sourceId": "242"
+                }
+              ]
+            }
+          },
+          {
+            "id": "94434122",
+            "title": "Full Stack React Developer",
+            "abstract": "Work fully remotely during U.S. Eastern Time, building scalable Full-Stack applications using Node.js, React, and Next.js for U.S. clients.",
+            "url": null,
+            "advertiser": {
+              "id": "62646465",
+              "name": "Eterna Indonesia"
+            },
+            "organisation": {
+              "id": "3035100",
+              "name": "Eterna Indonesia"
+            },
+            "location": {
+              "id": "2030500",
+              "displayName": {
+                "text": "Jakarta Raya"
+              }
+            },
+            "listedAt": {
+              "dateTimeUtc": "2026-09-04T19:26:48.000Z"
+            },
+            "salary": {
+              "period": "monthly",
+              "min": 10000000,
+              "max": 15000000,
+              "currency": "IDR"
+            },
+            "workArrangements": [
+              {
+                "id": "3",
+                "label": {
+                  "text": "Jarak jauh"
+                }
+              }
+            ],
+            "cjs": {
+              "workTypes": [
+                {
+                  "sourceId": "242"
+                }
+              ]
+            }
+          }
+        ],
+        "pagination": {
+          "page": 1,
+          "pageSize": 30,
+          "resultCount": 2148
+        }
+      }
+    }
+  }
+}

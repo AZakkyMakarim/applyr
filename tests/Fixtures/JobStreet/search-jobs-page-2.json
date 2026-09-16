@@ -1,0 +1,97 @@
+{
+  "data": {
+    "jobSearchV7": {
+      "results": {
+        "jobs": [
+          {
+            "id": "94667969",
+            "title": "Mineplan Engineer",
+            "abstract": "Mineplan Engineer menjadi salah satu posisi yang dibutuhkan oleh PT Mitra Indah Lestari saat ini, untuk lokasi Kota Balikpapan dan status Full Time.",
+            "url": null,
+            "advertiser": {
+              "id": "61941078",
+              "name": "PT Mitra Indah Lestari"
+            },
+            "organisation": null,
+            "location": {
+              "id": "2031301",
+              "displayName": {
+                "text": "Balikpapan, Kalimantan Timur"
+              }
+            },
+            "listedAt": {
+              "dateTimeUtc": "2026-09-16T05:03:16.000Z"
+            },
+            "salary": {
+              "period": "monthly",
+              "min": 5830000,
+              "max": 7000000,
+              "currency": "IDR"
+            },
+            "workArrangements": [
+              {
+                "id": "1",
+                "label": {
+                  "text": "Kantor"
+                }
+              }
+            ],
+            "cjs": {
+              "workTypes": [
+                {
+                  "sourceId": "242"
+                }
+              ]
+            }
+          },
+          {
+            "id": "94672549",
+            "title": "Admin Support HR (Intern)",
+            "abstract": "Membantu administrasi HR, pengelolaan data dan dokumen karyawan, serta memastikan penyimpanan data rapi, lengkap, dan terorganisir.",
+            "url": null,
+            "advertiser": {
+              "id": "63279839",
+              "name": "Material Handling"
+            },
+            "organisation": null,
+            "location": {
+              "id": "24607",
+              "displayName": {
+                "text": "Cibitung, Jawa Barat"
+              }
+            },
+            "listedAt": {
+              "dateTimeUtc": "2026-09-16T07:33:44.000Z"
+            },
+            "salary": {
+              "period": "hourly",
+              "min": 90000,
+              "max": 100000,
+              "currency": "IDR"
+            },
+            "workArrangements": [
+              {
+                "id": "1",
+                "label": {
+                  "text": "Kantor"
+                }
+              }
+            ],
+            "cjs": {
+              "workTypes": [
+                {
+                  "sourceId": "242"
+                }
+              ]
+            }
+          }
+        ],
+        "pagination": {
+          "page": 2,
+          "pageSize": 30,
+          "resultCount": 2148
+        }
+      }
+    }
+  }
+}
