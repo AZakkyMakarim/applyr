@@ -16,10 +16,14 @@ use App\Models\Project;
 use App\Models\SearchProfile;
 use App\Models\TailoredApplication;
 use App\Pdf\PdfRenderer;
+use Closure;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Sleep;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Fakes\FakePdfRenderer;
 use Tests\TestCase;
 
@@ -296,22 +300,7 @@ class TailoringTest extends TestCase
     public function test_tailoring_exits_without_calling_gemini_once_the_application_has_left_pending_tailoring(): void
     {
         Http::fake();
-        $job = Job::create([
-            'platform' => 'glints',
-            'external_id' => 'already-rejected',
-            'title' => 'Software Engineer',
-            'company_name' => 'Acme',
-            'country_code' => 'ID',
-            'location' => 'Jakarta',
-            'description' => 'Build things.',
-            'url' => 'https://glints.com/id/opportunities/jobs/already-rejected',
-            'work_arrangement' => 'onsite',
-            'job_type' => 'full_time',
-            'status' => 'open',
-            'posted_date' => now(),
-            'raw_payload' => [],
-        ]);
-        $application = $job->application()->create(['status' => ApplicationStatus::Rejected]);
+        $application = $this->applicationFor('already-rejected', ApplicationStatus::Rejected);
 
         TailorApplication::dispatch($application);
 
@@ -319,6 +308,177 @@ class TailoringTest extends TestCase
         $this->assertSame(ApplicationStatus::Rejected, $application->fresh()->status);
         $this->assertSame(0, TailoredApplication::count());
         $this->assertSame([], $this->pdfRenderer->rendered);
+    }
+
+    public function test_a_valid_first_attempt_is_used_without_regenerating(): void
+    {
+        $application = $this->applicationFor('valid-first');
+        $this->fakeGeminiSequence($this->validContent());
+
+        TailorApplication::dispatch($application);
+
+        $this->assertCount(1, $this->geminiRequests());
+        $application->refresh();
+        $this->assertSame(ApplicationStatus::NeedsReview, $application->status);
+        $this->assertSame(1, TailoredApplication::count());
+        $this->assertSame('Valid summary.', $application->currentTailoredApplication->cv_data['personal_info']['professional_summary']);
+    }
+
+    public function test_an_invalid_attempt_is_discarded_and_a_fresh_one_generated(): void
+    {
+        $application = $this->applicationFor('invalid-then-valid');
+        $invalid = $this->validContent();
+        $invalid['professional_summary'] = 'Discarded summary.';
+        $invalid['entries'][0]['entry_id'] = 'experience:999999';
+        $this->fakeGeminiSequence($invalid, $this->validContent());
+
+        TailorApplication::dispatch($application);
+
+        $this->assertCount(2, $this->geminiRequests());
+        $application->refresh();
+        $this->assertSame(ApplicationStatus::NeedsReview, $application->status);
+        $this->assertSame(1, TailoredApplication::count());
+        $this->assertSame('Valid summary.', $application->currentTailoredApplication->cv_data['personal_info']['professional_summary']);
+        $this->assertCount(2, $this->pdfRenderer->rendered);
+        foreach ($this->pdfRenderer->rendered as $html) {
+            $this->assertStringNotContainsString('Discarded summary.', $html);
+        }
+        Http::assertSent(fn (Request $request) => $request->url() === self::TELEGRAM_URL);
+    }
+
+    public function test_tailoring_fails_once_every_attempt_is_invalid(): void
+    {
+        $application = $this->applicationFor('always-invalid');
+        $invalid = $this->validContent();
+        $invalid['professional_summary'] = '';
+        $this->fakeGeminiSequence($invalid, $invalid, $invalid, $this->validContent());
+
+        TailorApplication::dispatch($application);
+
+        $this->assertCount(3, $this->geminiRequests());
+        $application->refresh();
+        $this->assertSame(ApplicationStatus::TailoringFailed, $application->status);
+        $this->assertNull($application->current_tailored_application_id);
+        $this->assertSame(0, TailoredApplication::count());
+        $this->assertSame([], $this->pdfRenderer->rendered);
+        Http::assertNotSent(fn (Request $request) => $request->url() === self::TELEGRAM_URL);
+    }
+
+    public function test_the_number_of_attempts_comes_from_the_regeneration_limit(): void
+    {
+        config(['applyr.tailoring.regeneration_limit' => 2]);
+        $application = $this->applicationFor('limit-two');
+        $invalid = $this->validContent();
+        unset($invalid['cover_letter']);
+        $this->fakeGeminiSequence($invalid, $invalid, $this->validContent());
+
+        TailorApplication::dispatch($application);
+
+        $this->assertCount(2, $this->geminiRequests());
+        $this->assertSame(ApplicationStatus::TailoringFailed, $application->fresh()->status);
+    }
+
+    /**
+     * @param  Closure(array<string, mixed>): array<string, mixed>  $invalidate
+     */
+    #[DataProvider('invalidContent')]
+    public function test_content_failing_fact_validation_never_becomes_a_tailored_application(Closure $invalidate): void
+    {
+        $application = $this->applicationFor('invalid');
+        $this->fakeGeminiSequence(...array_fill(0, 3, $invalidate($this->validContent())));
+
+        TailorApplication::dispatch($application);
+
+        $this->assertSame(ApplicationStatus::TailoringFailed, $application->fresh()->status);
+        $this->assertSame(0, TailoredApplication::count());
+        $this->assertSame([], $this->pdfRenderer->rendered);
+    }
+
+    /**
+     * Each case breaks one rule of an otherwise valid response, whose entries are the
+     * experience, education and project in that order.
+     *
+     * @return array<string, array{Closure(array<string, mixed>): array<string, mixed>}>
+     */
+    public static function invalidContent(): array
+    {
+        $cases = [
+            'unknown entry_id' => fn (array $c) => data_set($c, 'entries.2.entry_id', 'project:999999'),
+            'entry_id of an unknown kind' => fn (array $c) => data_set($c, 'entries.1.entry_id', str_replace('education:', 'certificate:', $c['entries'][1]['entry_id'])),
+            'duplicated entry_id' => fn (array $c) => data_set($c, 'entries.1.entry_id', $c['entries'][0]['entry_id']),
+            'more achievements than the experience has' => fn (array $c) => data_set($c, 'entries.0.achievements', ['One', 'Two', 'Invented three']),
+            'achievements on an education' => fn (array $c) => data_set($c, 'entries.1.achievements', ['Invented']),
+            'empty professional summary' => fn (array $c) => data_set($c, 'professional_summary', '   '),
+            'empty opening paragraph' => fn (array $c) => data_set($c, 'cover_letter.opening_paragraph', ''),
+            'empty body paragraph' => fn (array $c) => data_set($c, 'cover_letter.body_paragraphs.1', ''),
+            'no body paragraphs' => fn (array $c) => data_set($c, 'cover_letter.body_paragraphs', []),
+            'empty closing paragraph' => fn (array $c) => data_set($c, 'cover_letter.closing_paragraph', ' '),
+            'missing professional summary' => fn (array $c) => Arr::except($c, 'professional_summary'),
+            'missing entries' => fn (array $c) => Arr::except($c, 'entries'),
+            'missing cover letter' => fn (array $c) => Arr::except($c, 'cover_letter'),
+            'missing closing paragraph' => fn (array $c) => Arr::except($c, 'cover_letter.closing_paragraph'),
+            'entry without an entry_id' => fn (array $c) => Arr::except($c, 'entries.0.entry_id'),
+            'entry without achievements' => fn (array $c) => Arr::except($c, 'entries.2.achievements'),
+            'summary that is not a string' => fn (array $c) => data_set($c, 'professional_summary', ['Not', 'a string']),
+            'entries that are not a list' => fn (array $c) => data_set($c, 'entries', ['experience' => $c['entries'][0]]),
+            'entry that is not an object' => fn (array $c) => data_set($c, 'entries.2', 'project'),
+            'entry_id that is not a string' => fn (array $c) => data_set($c, 'entries.0.entry_id', 1),
+            'null description' => fn (array $c) => data_set($c, 'entries.0.description', null),
+            'description that is not a string' => fn (array $c) => data_set($c, 'entries.0.description', ['Built things.']),
+            'achievements that are not a list' => fn (array $c) => data_set($c, 'entries.0.achievements', 'Cut checkout latency by 40%'),
+            'achievement that is not a string' => fn (array $c) => data_set($c, 'entries.0.achievements', [['text' => 'Cut checkout latency by 40%']]),
+            'body paragraphs that are not a list' => fn (array $c) => data_set($c, 'cover_letter.body_paragraphs', 'First body paragraph.'),
+        ];
+
+        return array_map(fn (Closure $case) => [$case], $cases);
+    }
+
+    public function test_entries_the_ai_leaves_out_keep_their_master_profile_text(): void
+    {
+        $application = $this->applicationFor('omitted-entries');
+        $content = $this->validContent();
+        $content['entries'] = [$content['entries'][0]];
+        $this->fakeGeminiSequence($content);
+
+        TailorApplication::dispatch($application);
+
+        $cv = $application->fresh()->currentTailoredApplication->cv_data;
+        $this->assertSame('Valid experience description.', $cv['experiences']["experience:{$this->experience->id}"]['description']);
+        $this->assertSame('Thesis on distributed queues.', $cv['educations']["education:{$this->education->id}"]['description']);
+        $this->assertArrayNotHasKey('achievements', $cv['educations']["education:{$this->education->id}"]);
+        $this->assertSame('Job-application assistant.', $cv['projects']["project:{$this->project->id}"]['description']);
+        $this->assertSame(['Polls two job boards'], $cv['projects']["project:{$this->project->id}"]['achievements']);
+    }
+
+    public function test_facts_in_the_snapshot_equal_the_master_profile_whatever_the_ai_returns(): void
+    {
+        $application = $this->applicationFor('rewritten-facts');
+        $content = $this->validContent();
+        $content['skills'] = [['category' => 'Invented', 'skills' => ['Rust']]];
+        $content['full_name'] = 'Someone Else';
+        $content['entries'][0] += [
+            'title' => 'CTO',
+            'company' => 'Google',
+            'start_date' => '2010-01',
+            'end_date' => '2011-01',
+            'is_current' => false,
+            'skills_used' => ['Rust'],
+        ];
+        $content['entries'][1] += ['institution' => 'MIT', 'degree' => 'PhD', 'start_date' => '2000-01'];
+        $content['entries'][2] += ['name' => 'Kubernetes', 'tech_stack' => ['Go'], 'link' => 'https://example.com'];
+        $this->fakeGeminiSequence($content);
+
+        TailorApplication::dispatch($application);
+
+        $cv = $application->fresh()->currentTailoredApplication->cv_data;
+        $this->assertSame('Ahmad Zakky', $cv['personal_info']['full_name']);
+        $this->assertSame([['category' => 'Backend', 'skills' => ['PHP', 'Laravel']]], $cv['skills']);
+
+        foreach (['experiences' => $this->experience, 'educations' => $this->education, 'projects' => $this->project] as $section => $entry) {
+            $facts = $entry->fresh()->tailoringFacts();
+            $this->assertSame($facts, array_intersect_key($cv[$section][$entry->tailoringEntryId()], $facts));
+        }
+        $this->assertSame('Valid experience description.', $cv['experiences']["experience:{$this->experience->id}"]['description']);
     }
 
     public function test_gemini_reports_a_429_as_rate_limited(): void
@@ -386,7 +546,86 @@ class TailoringTest extends TestCase
             ],
         ];
 
+        return $this->geminiEnvelope($content);
+    }
+
+    private function applicationFor(string $externalId, ApplicationStatus $status = ApplicationStatus::PendingTailoring): Application
+    {
+        $job = Job::create([
+            'platform' => 'glints',
+            'external_id' => $externalId,
+            'title' => 'Software Engineer',
+            'company_name' => 'Acme',
+            'country_code' => 'ID',
+            'location' => 'Jakarta',
+            'description' => 'Build things.',
+            'url' => "https://glints.com/id/opportunities/jobs/{$externalId}",
+            'work_arrangement' => 'onsite',
+            'job_type' => 'full_time',
+            'status' => 'open',
+            'posted_date' => now(),
+            'raw_payload' => [],
+        ]);
+
+        return $job->application()->create(['status' => $status]);
+    }
+
+    /**
+     * Gemini answers successive calls with each content in turn.
+     *
+     * @param  array<string, mixed>  ...$contents
+     */
+    private function fakeGeminiSequence(array ...$contents): void
+    {
+        $sequence = Http::sequence();
+
+        foreach ($contents as $content) {
+            $sequence->push($this->geminiEnvelope($content));
+        }
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => $sequence,
+            'api.telegram.org/*' => Http::response(['ok' => true]),
+        ]);
+    }
+
+    /**
+     * A Gemini generateContent response whose text is the given content as JSON.
+     *
+     * @param  array<string, mixed>  $content
+     * @return array<string, mixed>
+     */
+    private function geminiEnvelope(array $content): array
+    {
         return ['candidates' => [['content' => ['role' => 'model', 'parts' => [['text' => json_encode($content)]]]]]];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function validContent(): array
+    {
+        return [
+            'professional_summary' => 'Valid summary.',
+            'entries' => [
+                ['entry_id' => "experience:{$this->experience->id}", 'description' => 'Valid experience description.', 'achievements' => ['Led the Laravel upgrade', 'Cut checkout latency by 40%']],
+                ['entry_id' => "education:{$this->education->id}", 'description' => 'Valid education description.', 'achievements' => []],
+                ['entry_id' => "project:{$this->project->id}", 'description' => 'Valid project description.', 'achievements' => []],
+            ],
+            'cover_letter' => [
+                'opening_paragraph' => 'Valid opening.',
+                'body_paragraphs' => ['First body paragraph.', 'Second body paragraph.'],
+                'closing_paragraph' => 'Valid closing.',
+            ],
+        ];
+    }
+
+    /**
+     * @return Collection<int, array{Request, mixed}>
+     */
+    private function geminiRequests(): Collection
+    {
+        return Http::recorded(fn (Request $request) => $request->url() === self::GEMINI_URL);
     }
 
     private function promptOf(Request $request): string

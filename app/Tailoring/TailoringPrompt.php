@@ -5,7 +5,6 @@ namespace App\Tailoring;
 use App\Models\Job;
 use App\Models\MasterProfile;
 use App\Models\MasterProfileEntry;
-use Illuminate\Support\Collection;
 
 /**
  * What the AI is asked for one Application: the Job, the MasterProfile's entries with their
@@ -56,7 +55,7 @@ class TailoringPrompt
                     'professional_summary' => $this->masterProfile->professional_summary,
                 ],
             ],
-            'entries' => $this->entries()->map(fn (MasterProfileEntry $entry) => [
+            'entries' => $this->masterProfile->entries()->map(fn (MasterProfileEntry $entry) => [
                 'entry_id' => $entry->tailoringEntryId(),
                 'facts' => $entry->tailoringFacts(),
                 'reframeable' => $entry->reframeableText(),
@@ -107,17 +106,5 @@ class TailoringPrompt
             'required' => ['professional_summary', 'entries', 'cover_letter'],
             'propertyOrdering' => ['professional_summary', 'entries', 'cover_letter'],
         ];
-    }
-
-    /**
-     * @return Collection<int, MasterProfileEntry>
-     */
-    private function entries(): Collection
-    {
-        return collect([
-            ...$this->masterProfile->experiences,
-            ...$this->masterProfile->educations,
-            ...$this->masterProfile->projects,
-        ]);
     }
 }

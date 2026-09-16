@@ -11,6 +11,7 @@ use App\Notifiers\TelegramNotifier;
 use App\Pdf\PdfRenderer;
 use App\Tailoring\DocumentSnapshots;
 use App\Tailoring\TailoringPrompt;
+use App\Tailoring\TailoringResponseValidator;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
@@ -19,7 +20,8 @@ use Illuminate\Support\Str;
 
 /**
  * Generates an Application's TailoredApplication with the AI provider, renders both PDFs,
- * and hands the Application to the user for review.
+ * and hands the Application to the user for review. An AI response that fails fact validation is
+ * regenerated, and never rendered or stored.
  */
 class TailorApplication implements ShouldQueue
 {
@@ -47,9 +49,16 @@ class TailorApplication implements ShouldQueue
 
         $job = $application->job;
 
-        $output = $ai->generate((new TailoringPrompt($job, $masterProfile))->text(), TailoringPrompt::responseSchema());
+        $aiResponse = $this->generateValidAiResponse($ai, new TailoringPrompt($job, $masterProfile), new TailoringResponseValidator($masterProfile));
 
-        $snapshots = new DocumentSnapshots($job, $masterProfile, $output);
+        // Every attempt failed validation; the user sees it on the dashboard, with no Telegram message.
+        if ($aiResponse === null) {
+            $application->update(['status' => ApplicationStatus::TailoringFailed]);
+
+            return;
+        }
+
+        $snapshots = new DocumentSnapshots($job, $masterProfile, $aiResponse);
         $cvData = $snapshots->cvData();
         $coverLetterData = $snapshots->coverLetterData();
 
@@ -83,5 +92,31 @@ class TailorApplication implements ShouldQueue
             '',
             route('applications.show', $application),
         ])));
+    }
+
+    /**
+     * Asks the AI until a response passes fact validation, discarding each one that doesn't, up to
+     * the regeneration limit.
+     *
+     * @return array<string, mixed>|null the first valid response, or null once every attempt failed
+     */
+    private function generateValidAiResponse(AiProvider $ai, TailoringPrompt $prompt, TailoringResponseValidator $validator): ?array
+    {
+        $limit = max(1, (int) config('applyr.tailoring.regeneration_limit'));
+
+        for ($attempt = 1; $attempt <= $limit; $attempt++) {
+            $aiResponse = $ai->generate($prompt->text(), TailoringPrompt::responseSchema());
+            $failures = $validator->failures($aiResponse);
+
+            if ($failures === []) {
+                return $aiResponse;
+            }
+
+            Log::warning("Application {$this->application->id}: tailoring attempt {$attempt} of {$limit} failed validation.", [
+                'failures' => $failures,
+            ]);
+        }
+
+        return null;
     }
 }

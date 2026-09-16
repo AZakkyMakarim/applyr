@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Table;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -71,6 +72,16 @@ class MasterProfile extends Model
     public function projects(): HasMany
     {
         return $this->hasMany(Project::class)->newestFirst();
+    }
+
+    /**
+     * Every Experience, Education and Project, in that order.
+     *
+     * @return Collection<int, MasterProfileEntry>
+     */
+    public function entries(): Collection
+    {
+        return collect([...$this->experiences, ...$this->educations, ...$this->projects]);
     }
 
     /**
