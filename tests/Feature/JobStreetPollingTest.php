@@ -2,12 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Adapters\Exceptions\AdapterException;
-use App\Adapters\Exceptions\AntiBotBlockedException;
-use App\Adapters\Exceptions\ApiErrorException;
-use App\Adapters\Exceptions\ShapeDriftException;
-use App\Adapters\Exceptions\TransportException;
 use App\Enums\ApplicationStatus;
+use App\Enums\FailureCategory;
 use App\Enums\JobStatus;
 use App\Enums\JobType;
 use App\Enums\JobTypeFilter;
@@ -16,6 +12,7 @@ use App\Enums\PostDateRange;
 use App\Enums\SalaryPeriod;
 use App\Enums\WorkArrangement;
 use App\Enums\WorkArrangementFilter;
+use App\Models\AdapterHealth;
 use App\Models\Application;
 use App\Models\Job;
 use App\Models\SearchProfile;
@@ -247,28 +244,28 @@ class JobStreetPollingTest extends TestCase
             ),
         ]);
 
-        $this->assertPollFails(AntiBotBlockedException::class);
+        $this->assertPollFails(FailureCategory::AntiBot);
     }
 
     public function test_a_graphql_error_on_a_200_fails_the_run_as_an_api_error(): void
     {
         Http::fake(['id.jobstreet.com/*' => Http::response($this->fixture('graphql-unstable-query-error.json'))]);
 
-        $this->assertPollFails(ApiErrorException::class);
+        $this->assertPollFails(FailureCategory::ApiError);
     }
 
     public function test_a_rejected_query_fails_the_run_as_an_api_error(): void
     {
         Http::fake(['id.jobstreet.com/*' => Http::response($this->fixture('graphql-validation-error.json'), 400)]);
 
-        $this->assertPollFails(ApiErrorException::class);
+        $this->assertPollFails(FailureCategory::ApiError);
     }
 
     public function test_a_connection_failure_fails_the_run_as_transport(): void
     {
         Http::fake(['id.jobstreet.com/*' => Http::failedConnection()]);
 
-        $this->assertPollFails(TransportException::class);
+        $this->assertPollFails(FailureCategory::Transport);
     }
 
     public function test_a_result_missing_a_required_field_fails_the_run_as_shape_drift(): void
@@ -277,14 +274,14 @@ class JobStreetPollingTest extends TestCase
         unset($drifted['data']['jobSearchV7']['results']['jobs'][1]['listedAt']);
         Http::fake(['id.jobstreet.com/*' => Http::response($drifted)]);
 
-        $this->assertPollFails(ShapeDriftException::class);
+        $this->assertPollFails(FailureCategory::ShapeDrift);
     }
 
     public function test_a_response_missing_its_results_fails_the_run_as_shape_drift(): void
     {
         Http::fake(['id.jobstreet.com/*' => Http::response(['data' => ['jobSearchV7' => ['jobs' => []]]])]);
 
-        $this->assertPollFails(ShapeDriftException::class);
+        $this->assertPollFails(FailureCategory::ShapeDrift);
     }
 
     public function test_search_profile_filters_are_translated_into_the_jobstreet_request(): void
@@ -411,20 +408,17 @@ class JobStreetPollingTest extends TestCase
     }
 
     /**
-     * @param  class-string<AdapterException>  $exception
+     * The run fails with the given category recorded against JobStreet, storing nothing.
      */
-    private function assertPollFails(string $exception): void
+    private function assertPollFails(FailureCategory $category): void
     {
         SearchProfile::factory()->create(['keyword' => ['software engineer'], 'location' => null]);
 
-        try {
-            $this->artisan('applyr:poll')->run();
-            $this->fail("Expected the poll to fail with {$exception}.");
-        } catch (AdapterException $e) {
-            $this->assertInstanceOf($exception, $e);
-            $this->assertSame(Platform::JobStreet, $e->platform);
-        }
+        $this->artisan('applyr:poll')->assertSuccessful();
 
+        $health = AdapterHealth::for(Platform::JobStreet);
+        $this->assertSame($category, $health->last_failure_category);
+        $this->assertSame(1, $health->failuresFor($category));
         $this->assertSame(0, Job::count());
     }
 

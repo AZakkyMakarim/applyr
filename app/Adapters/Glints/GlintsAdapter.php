@@ -8,6 +8,7 @@ use App\Adapters\Exceptions\ApiErrorException;
 use App\Adapters\Exceptions\ShapeDriftException;
 use App\Adapters\Exceptions\TransportException;
 use App\Adapters\JobData;
+use App\Adapters\RetriesTransportFailures;
 use App\Enums\JobStatus;
 use App\Enums\JobType;
 use App\Enums\JobTypeFilter;
@@ -28,6 +29,8 @@ use Throwable;
  */
 class GlintsAdapter implements Adapter
 {
+    use RetriesTransportFailures;
+
     private const ENDPOINT = 'https://glints.com/api/v2/graphql';
 
     // Cloudflare challenges a bare User-Agent; a full desktop Chrome string passes.
@@ -240,7 +243,7 @@ class GlintsAdapter implements Adapter
         $this->pace();
 
         try {
-            $response = Http::withUserAgent(self::USER_AGENT)
+            $response = $this->retryingTransportFailures(Http::withUserAgent(self::USER_AGENT))
                 ->acceptJson()
                 ->timeout(30)
                 ->withOptions(['curl' => [

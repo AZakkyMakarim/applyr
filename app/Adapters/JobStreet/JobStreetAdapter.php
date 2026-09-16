@@ -8,6 +8,7 @@ use App\Adapters\Exceptions\ApiErrorException;
 use App\Adapters\Exceptions\ShapeDriftException;
 use App\Adapters\Exceptions\TransportException;
 use App\Adapters\JobData;
+use App\Adapters\RetriesTransportFailures;
 use App\Enums\JobStatus;
 use App\Enums\JobType;
 use App\Enums\Platform;
@@ -28,6 +29,8 @@ use Throwable;
  */
 class JobStreetAdapter implements Adapter
 {
+    use RetriesTransportFailures;
+
     // jobstreet.co.id only redirects here.
     private const ENDPOINT = 'https://id.jobstreet.com/graphql';
 
@@ -224,7 +227,7 @@ class JobStreetAdapter implements Adapter
         $this->pace();
 
         try {
-            $response = Http::withHeaders(self::HEADERS)
+            $response = $this->retryingTransportFailures(Http::withHeaders(self::HEADERS))
                 ->asJson()
                 ->timeout(30)
                 ->post(self::ENDPOINT, [

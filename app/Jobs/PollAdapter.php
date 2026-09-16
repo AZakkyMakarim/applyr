@@ -7,6 +7,7 @@ use App\Adapters\AdapterRegistry;
 use App\Adapters\JobData;
 use App\Enums\ApplicationStatus;
 use App\Enums\Platform;
+use App\Jobs\Middleware\TracksAdapterHealth;
 use App\Models\Job;
 use App\Models\SearchProfile;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -22,11 +23,23 @@ class PollAdapter implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
+    // Pacing plus transport retry backoff can stretch a run to minutes; the queue's
+    // retry_after must stay above this so a slow run isn't handed to a second worker.
+    public int $timeout = 1800;
+
     public function __construct(public readonly Platform $platform) {}
 
     public function uniqueId(): string
     {
         return $this->platform->value;
+    }
+
+    /**
+     * @return list<object>
+     */
+    public function middleware(): array
+    {
+        return [app(TracksAdapterHealth::class)];
     }
 
     public function handle(AdapterRegistry $adapters): void

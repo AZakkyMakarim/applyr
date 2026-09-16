@@ -2,12 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Adapters\Exceptions\AdapterException;
-use App\Adapters\Exceptions\AntiBotBlockedException;
-use App\Adapters\Exceptions\ApiErrorException;
-use App\Adapters\Exceptions\ShapeDriftException;
-use App\Adapters\Exceptions\TransportException;
 use App\Enums\ApplicationStatus;
+use App\Enums\FailureCategory;
 use App\Enums\JobStatus;
 use App\Enums\JobType;
 use App\Enums\JobTypeFilter;
@@ -15,6 +11,7 @@ use App\Enums\Platform;
 use App\Enums\PostDateRange;
 use App\Enums\WorkArrangement;
 use App\Enums\WorkArrangementFilter;
+use App\Models\AdapterHealth;
 use App\Models\Application;
 use App\Models\Job;
 use App\Models\SearchProfile;
@@ -307,21 +304,21 @@ class GlintsPollingTest extends TestCase
             ),
         ]);
 
-        $this->assertPollFails(AntiBotBlockedException::class);
+        $this->assertPollFails(FailureCategory::AntiBot);
     }
 
     public function test_a_graphql_errors_array_fails_the_run_as_an_api_error(): void
     {
         Http::fake(['glints.com/*' => Http::response($this->fixture('graphql-validation-error.json'))]);
 
-        $this->assertPollFails(ApiErrorException::class);
+        $this->assertPollFails(FailureCategory::ApiError);
     }
 
     public function test_a_connection_failure_fails_the_run_as_transport(): void
     {
         Http::fake(['glints.com/*' => Http::failedConnection()]);
 
-        $this->assertPollFails(TransportException::class);
+        $this->assertPollFails(FailureCategory::Transport);
     }
 
     public function test_a_result_missing_a_required_field_fails_the_run_as_shape_drift(): void
@@ -331,7 +328,7 @@ class GlintsPollingTest extends TestCase
         unset($drifted['data']['searchJobsV3']['jobsInPage'][1]['title']);
         $this->fakeGlints([$drifted]);
 
-        $this->assertPollFails(ShapeDriftException::class);
+        $this->assertPollFails(FailureCategory::ShapeDrift);
     }
 
     public function test_polling_is_scheduled_on_the_configured_interval(): void
@@ -344,20 +341,17 @@ class GlintsPollingTest extends TestCase
     }
 
     /**
-     * @param  class-string<AdapterException>  $exception
+     * The run fails with the given category recorded against Glints, storing nothing.
      */
-    private function assertPollFails(string $exception): void
+    private function assertPollFails(FailureCategory $category): void
     {
         SearchProfile::factory()->create(['keyword' => ['software engineer'], 'location' => null]);
 
-        try {
-            $this->artisan('applyr:poll')->run();
-            $this->fail("Expected the poll to fail with {$exception}.");
-        } catch (AdapterException $e) {
-            $this->assertInstanceOf($exception, $e);
-            $this->assertSame(Platform::Glints, $e->platform);
-        }
+        $this->artisan('applyr:poll')->assertSuccessful();
 
+        $health = AdapterHealth::for(Platform::Glints);
+        $this->assertSame($category, $health->last_failure_category);
+        $this->assertSame(1, $health->failuresFor($category));
         $this->assertSame(0, Job::count());
     }
 
