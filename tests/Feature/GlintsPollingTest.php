@@ -9,6 +9,7 @@ use App\Enums\JobType;
 use App\Enums\JobTypeFilter;
 use App\Enums\Platform;
 use App\Enums\PostDateRange;
+use App\Enums\SalaryPeriod;
 use App\Enums\WorkArrangement;
 use App\Enums\WorkArrangementFilter;
 use App\Models\AdapterHealth;
@@ -19,6 +20,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class GlintsPollingTest extends TestCase
@@ -245,6 +247,77 @@ class GlintsPollingTest extends TestCase
 
         // Known postings aren't described again: only the first poll's three lookups were sent.
         $this->assertCount(3, Http::recorded(fn (Request $request) => $request['operationName'] === 'getJobById'));
+    }
+
+    public function test_a_closed_job_is_expired_when_glints_closed_it_at_its_expiry_date(): void
+    {
+        // Search only serves OPEN postings, so the closed states come from live getJobById captures.
+        $page = $this->fixture('search-jobs.json');
+        $expired = $this->fixture('job-expired-00317faf-5b08-4ac9-bd9b-028662ed379b.json')['data']['getJobById'];
+        $closed = $this->fixture('job-closed-0c75c92d-f952-4446-aa77-a5a2deb5732d.json')['data']['getJobById'];
+        $fields = ['status' => null, 'closedAt' => null, 'expiryDate' => null];
+        $page['data']['searchJobsV3']['jobsInPage'][0] = [...$page['data']['searchJobsV3']['jobsInPage'][0], ...array_intersect_key($expired, $fields)];
+        $page['data']['searchJobsV3']['jobsInPage'][1] = [...$page['data']['searchJobsV3']['jobsInPage'][1], ...array_intersect_key($closed, $fields)];
+        // Closed by the employer on the expiry day itself, before Glints' own close would run.
+        $page['data']['searchJobsV3']['jobsInPage'][2] = [...$page['data']['searchJobsV3']['jobsInPage'][2], 'status' => 'CLOSED', 'closedAt' => '2024-10-25T09:30:00.000Z', 'expiryDate' => '2024-10-25T00:00:00Z'];
+        $this->fakeGlints([$page]);
+        SearchProfile::factory()->create(['keyword' => ['software engineer'], 'location' => null]);
+
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        $this->assertSame(JobStatus::Expired, Job::where('external_id', self::SOFTWARE_ENGINEER_ID)->sole()->status);
+        $this->assertSame(JobStatus::Closed, Job::where('external_id', self::REMOTE_FULLSTACK_ID)->sole()->status);
+        $this->assertSame(JobStatus::Closed, Job::where('external_id', self::HYBRID_INTERNSHIP_ID)->sole()->status);
+    }
+
+    /**
+     * Salary lists as live Glints postings report them.
+     *
+     * @return array<string, array{list<array<string, mixed>>, SalaryPeriod, float|int}>
+     */
+    public static function salaryModes(): array
+    {
+        return [
+            'daily (654d5b11)' => [[
+                ['CurrencyCode' => 'IDR', 'maxAmount' => 250000, 'minAmount' => 150000, 'salaryMode' => 'DAY', 'salaryType' => 'BASIC'],
+            ], SalaryPeriod::Unspecified, 150000],
+            'hourly (d92b26f7)' => [[
+                ['CurrencyCode' => 'IDR', 'maxAmount' => 400000, 'minAmount' => 390000, 'salaryMode' => 'HOUR', 'salaryType' => 'BASIC'],
+            ], SalaryPeriod::Unspecified, 390000],
+            'yearly (64b658c3)' => [[
+                ['CurrencyCode' => 'VND', 'maxAmount' => 15000000, 'minAmount' => 10000000, 'salaryMode' => 'YEAR', 'salaryType' => 'BONUS'],
+                ['CurrencyCode' => 'VND', 'maxAmount' => 15000000, 'minAmount' => 10000000, 'salaryMode' => 'YEAR', 'salaryType' => 'BASIC'],
+            ], SalaryPeriod::Yearly, 10000000],
+            'weekly bonus beside a monthly base (9f430571)' => [[
+                ['CurrencyCode' => 'IDR', 'maxAmount' => 1000000, 'minAmount' => 500000, 'salaryMode' => 'WEEK', 'salaryType' => 'BONUS'],
+                ['CurrencyCode' => 'IDR', 'maxAmount' => 6500000, 'minAmount' => 5000000, 'salaryMode' => 'MONTH', 'salaryType' => 'BASIC'],
+            ], SalaryPeriod::Monthly, 5000000],
+            'per-project bonus beside a monthly base (b017c03c)' => [[
+                ['CurrencyCode' => 'IDR', 'maxAmount' => 5000000, 'minAmount' => 2000000, 'salaryMode' => 'PROJECT', 'salaryType' => 'BONUS'],
+                ['CurrencyCode' => 'IDR', 'maxAmount' => 6000000, 'minAmount' => 5000000, 'salaryMode' => 'MONTH', 'salaryType' => 'BASIC'],
+            ], SalaryPeriod::Monthly, 5000000],
+            'unlabelled (2a19f54f)' => [[
+                ['CurrencyCode' => 'SGD', 'maxAmount' => 50, 'minAmount' => 25, 'salaryMode' => '', 'salaryType' => ''],
+            ], SalaryPeriod::Unspecified, 25],
+        ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $salaries
+     */
+    #[DataProvider('salaryModes')]
+    public function test_salary_modes_map_to_a_salary_period(array $salaries, SalaryPeriod $period, float|int $minimum): void
+    {
+        $page = $this->fixture('search-jobs.json');
+        $page['data']['searchJobsV3']['jobsInPage'][0]['salaries'] = $salaries;
+        $this->fakeGlints([$page]);
+        SearchProfile::factory()->create(['keyword' => ['software engineer'], 'location' => null]);
+
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        $job = Job::where('external_id', self::SOFTWARE_ENGINEER_ID)->sole();
+        $this->assertSame($period, $job->salary_period);
+        $this->assertEquals($minimum, $job->salary_min);
     }
 
     public function test_paused_search_profiles_are_not_polled(): void

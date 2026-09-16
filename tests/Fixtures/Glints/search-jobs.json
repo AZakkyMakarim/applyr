@@ -29,6 +29,7 @@
           ],
           "city": null,
           "citySubDivision": null,
+          "closedAt": null,
           "company": {
             "brandName": null,
             "id": "8aa649dc-29f4-45ad-8b63-5ab280cd2343",
@@ -177,6 +178,7 @@
             "id": "0xc00e432e50",
             "name": "Setiabudi"
           },
+          "closedAt": null,
           "company": {
             "brandName": null,
             "id": "9c00f694-4d54-4879-9be5-f86ccf06bcc8",
@@ -272,6 +274,7 @@
             "name": "Malang"
           },
           "citySubDivision": null,
+          "closedAt": null,
           "company": {
             "brandName": null,
             "id": "9152ea0b-0133-4b55-afde-657ab136a574",

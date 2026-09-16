@@ -24,6 +24,7 @@
           ],
           "city": null,
           "citySubDivision": null,
+          "closedAt": null,
           "company": {
             "brandName": null,
             "id": "a06a311c-0bfa-43a2-b3ba-f439e88de04f",
@@ -133,6 +134,7 @@
           ],
           "city": null,
           "citySubDivision": null,
+          "closedAt": null,
           "company": {
             "brandName": null,
             "id": "f168f242-d8b3-46ed-adcb-289b53478d27",

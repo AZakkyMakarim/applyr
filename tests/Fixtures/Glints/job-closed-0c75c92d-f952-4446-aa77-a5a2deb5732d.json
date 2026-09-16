@@ -1,0 +1,132 @@
+{
+  "data": {
+    "getJobById": {
+      "CountryCode": "ID",
+      "benefits": [
+        {
+          "benefit": "MEDICAL_COVERAGE",
+          "description": "To ensure your health and wellbeing, you have various medical plans to choose from depending on your situation and unique needs. From partial up to full medical coverage, we got you covered.",
+          "title": "Health Insurance"
+        },
+        {
+          "benefit": "TEAM_BUILDING_EVENTS",
+          "description": "Our company simply cannot function well without teams of people working together. That said, we provide numerous team-building activities and events for you and your team to nurture meaningful relationships between every individual.",
+          "title": "Team-building events"
+        },
+        {
+          "benefit": "WORK_STATION",
+          "description": "In need of a laptop or certain devices specifically for work? It's on us. We will provide the necessary tools that you need so you can focus on what you do best and get a job done.",
+          "title": "Laptop Provided"
+        },
+        {
+          "benefit": "TRAVEL",
+          "description": "We understand that commuting for work costs you money, time, and energy. For that reason, we can provide you with travel accommodations and allowances so you can focus on what's important. No need to worry about travel expenses.",
+          "title": "Transport Money"
+        },
+        {
+          "benefit": "LIFETIME_SAVINGS",
+          "description": "Our care goes beyond your stay at our company. We have lifetime saving programs that help us ensure your well being even after your retirement or when you are no longer working with us.",
+          "title": "Lifetime Savings"
+        },
+        {
+          "benefit": "LOANS",
+          "description": "Emergency financial needs can trouble you at work and at home. We provide financial assistance to help you with such needs. You can get the funds in advance and pay in chunks from your salary or at once—depending on what suits you best.",
+          "title": "Loan"
+        }
+      ],
+      "city": {
+        "id": "29367",
+        "name": "Bandung"
+      },
+      "citySubDivision": null,
+      "closedAt": "2024-08-26T03:55:47.503Z",
+      "company": {
+        "brandName": null,
+        "id": "d0c70f78-1160-4dbe-9e0b-06de7ca00124",
+        "name": "Idea Imaji"
+      },
+      "country": {
+        "code": "ID",
+        "name": "Indonesia"
+      },
+      "createdAt": "2024-06-04T03:33:01.877Z",
+      "educationLevel": "BACHELOR_DEGREE",
+      "expiryDate": "2024-09-26T00:00:00Z",
+      "externalApplyURL": null,
+      "hierarchicalJobCategory": {
+        "id": "46f31af3-33a5-40b9-9eee-1abb161d5958",
+        "level": 3,
+        "name": "Sales Representative"
+      },
+      "id": "0c75c92d-f952-4446-aa77-a5a2deb5732d",
+      "isRemote": true,
+      "location": {
+        "formattedName": "Buahbatu",
+        "id": "ba431c54-d44b-40e7-85d7-cbe68c5405b7",
+        "level": 4,
+        "name": "Buahbatu",
+        "parents": [
+          {
+            "formattedName": "Bandung",
+            "id": "86a3dc56-1bd7-4cd3-8225-d3e4b976e552",
+            "level": 3,
+            "name": "Bandung"
+          },
+          {
+            "formattedName": "Jawa Barat",
+            "id": "06c9e480-42e7-4f11-9d6c-67ad64ccc0f6",
+            "level": 2,
+            "name": "Jawa Barat"
+          },
+          {
+            "formattedName": "Indonesia",
+            "id": "7542a4d7-4324-4f76-ae1f-2e37ffb1198b",
+            "level": 1,
+            "name": "Indonesia"
+          }
+        ]
+      },
+      "maxYearsOfExperience": 3,
+      "minYearsOfExperience": 1,
+      "salaries": [
+        {
+          "CurrencyCode": "IDR",
+          "maxAmount": 6000000,
+          "minAmount": 4000000,
+          "salaryMode": "MONTH",
+          "salaryType": "BASIC"
+        }
+      ],
+      "skills": [
+        {
+          "mustHave": true,
+          "skill": {
+            "id": "10144ec8-a194-496f-bc3f-9fa409b9ac6d",
+            "name": "Marketing Communications"
+          }
+        },
+        {
+          "mustHave": true,
+          "skill": {
+            "id": "e4faa847-e884-4e5a-9bfd-19818edf5242",
+            "name": "Business Negotiation"
+          }
+        },
+        {
+          "mustHave": true,
+          "skill": {
+            "id": "f7237547-28da-445b-97c2-efae4943ca14",
+            "name": "Client Services"
+          }
+        }
+      ],
+      "source": "NATIVE",
+      "status": "CLOSED",
+      "title": "Account Executive",
+      "type": "CONTRACT",
+      "updatedAt": "2025-10-11T19:03:39.941Z",
+      "workArrangementOption": "REMOTE"
+    }
+  },
+  "isAuthenticated": false
+}

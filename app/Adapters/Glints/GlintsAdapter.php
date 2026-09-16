@@ -51,7 +51,7 @@ class GlintsAdapter implements Adapter
             hasMore
             jobsInPage {
               id title status type workArrangementOption isRemote source
-              createdAt updatedAt expiryDate
+              createdAt updatedAt expiryDate closedAt
               minYearsOfExperience maxYearsOfExperience educationLevel
               descriptionJsonString externalApplyURL
               CountryCode
@@ -349,15 +349,11 @@ class GlintsAdapter implements Adapter
             },
             minYearsExperience: $posting['minYearsOfExperience'] ?? null,
             maxYearsExperience: $posting['maxYearsOfExperience'] ?? null,
-            status: match ($posting['status'] ?? null) {
-                'OPEN' => JobStatus::Open,
-                'CLOSED' => JobStatus::Closed,
-                'EXPIRED' => JobStatus::Expired,
-                default => JobStatus::Unknown,
-            },
+            status: $this->status($posting),
             salaryMin: $salary['minAmount'] ?? null,
             salaryMax: $salary['maxAmount'] ?? null,
             salaryCurrency: $salary['CurrencyCode'] ?? null,
+            // Glints also reports WEEK, DAY, HOUR, PROJECT and a blank mode, which have no SalaryPeriod.
             salaryPeriod: $salary === null ? null : match ($salary['salaryMode'] ?? null) {
                 'MONTH' => SalaryPeriod::Monthly,
                 'YEAR' => SalaryPeriod::Yearly,
@@ -416,6 +412,45 @@ class GlintsAdapter implements Adapter
             ->filter();
 
         return $names->isEmpty() ? null : $names->implode(', ');
+    }
+
+    /**
+     * Glints' job status enum is OPEN, CLOSED, IN_REVIEW and DELETED, with no expired state, so an
+     * expiry shows up as CLOSED. IN_REVIEW and DELETED postings aren't served publicly.
+     *
+     * @param  array<string, mixed>  $posting
+     */
+    private function status(array $posting): JobStatus
+    {
+        return match ($posting['status'] ?? null) {
+            'OPEN' => JobStatus::Open,
+            'CLOSED' => $this->closedOnExpiry($posting) ? JobStatus::Expired : JobStatus::Closed,
+            default => JobStatus::Unknown,
+        };
+    }
+
+    /**
+     * Whether Glints closed the posting itself when it expired rather than the employer closing it.
+     * Glints closes expired postings as the expiry day ends in its UTC+7/UTC+8 markets (17:00Z seen in
+     * Indonesia), so a close before that is manual, even one earlier on the expiry day.
+     *
+     * @param  array<string, mixed>  $posting
+     */
+    private function closedOnExpiry(array $posting): bool
+    {
+        if (empty($posting['closedAt']) || empty($posting['expiryDate'])) {
+            return false;
+        }
+
+        try {
+            $closedAt = CarbonImmutable::parse($posting['closedAt']);
+            // expiryDate is a bare date on open postings and midnight UTC on closed ones.
+            $expiryDayEnds = CarbonImmutable::parse($posting['expiryDate'], 'UTC')->startOfDay()->addHours(16);
+        } catch (Throwable $e) {
+            throw new ShapeDriftException(Platform::Glints, 'Posting field closedAt or expiryDate is not a date.', 200, $e);
+        }
+
+        return $closedAt->gte($expiryDayEnds);
     }
 
     /**

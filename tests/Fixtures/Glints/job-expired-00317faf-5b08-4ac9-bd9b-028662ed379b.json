@@ -1,0 +1,112 @@
+{
+  "data": {
+    "getJobById": {
+      "CountryCode": "ID",
+      "benefits": [
+        {
+          "benefit": "CAREER_GROWTH",
+          "description": "Ever feel stuck with your career? We don't hire you simply because we needed to fill an empty slot. Together, we will help you shape and grow your career so you can progress further and rediscover your true sense of purpose at work.",
+          "title": "Career Path"
+        },
+        {
+          "benefit": "FLEXIBLE_WORK_HOURS",
+          "description": "Productivity curve is not something steady and consistent as it depends on each person's unique traits and preferences. At our company, as long as your team is in sync and your goal is hit, you can flexibly decide when you want to work.",
+          "title": "Flexible Hours"
+        }
+      ],
+      "city": {
+        "id": "28570",
+        "name": "Malang"
+      },
+      "citySubDivision": null,
+      "closedAt": "2024-10-25T17:00:00.436Z",
+      "company": {
+        "brandName": null,
+        "id": "eedc2328-9cb0-4661-aeb1-dba4ed3da2bc",
+        "name": "MyRepublic Jawa Timur"
+      },
+      "country": {
+        "code": "ID",
+        "name": "Indonesia"
+      },
+      "createdAt": "2023-10-20T02:35:45.469Z",
+      "educationLevel": "HIGH_SCHOOL",
+      "expiryDate": "2024-10-25T00:00:00Z",
+      "externalApplyURL": null,
+      "hierarchicalJobCategory": {
+        "id": "46f31af3-33a5-40b9-9eee-1abb161d5958",
+        "level": 3,
+        "name": "Sales Representative"
+      },
+      "id": "00317faf-5b08-4ac9-bd9b-028662ed379b",
+      "isRemote": false,
+      "location": {
+        "formattedName": "Blimbing",
+        "id": "0cd73e6e-1638-498a-9d44-43c664c69beb",
+        "level": 4,
+        "name": "Blimbing",
+        "parents": [
+          {
+            "formattedName": "Malang",
+            "id": "6ec28332-761a-4ee9-b0d8-52171a170edf",
+            "level": 3,
+            "name": "Malang"
+          },
+          {
+            "formattedName": "Jawa Timur",
+            "id": "bc26ec98-d599-44cb-84e7-c92f6d87e102",
+            "level": 2,
+            "name": "Jawa Timur"
+          },
+          {
+            "formattedName": "Indonesia",
+            "id": "7542a4d7-4324-4f76-ae1f-2e37ffb1198b",
+            "level": 1,
+            "name": "Indonesia"
+          }
+        ]
+      },
+      "maxYearsOfExperience": 1,
+      "minYearsOfExperience": 0,
+      "salaries": [
+        {
+          "CurrencyCode": "IDR",
+          "maxAmount": 10000000,
+          "minAmount": 2300000,
+          "salaryMode": "MONTH",
+          "salaryType": "BASIC"
+        }
+      ],
+      "skills": [
+        {
+          "mustHave": true,
+          "skill": {
+            "id": "10144ec8-a194-496f-bc3f-9fa409b9ac6d",
+            "name": "Marketing Communications"
+          }
+        },
+        {
+          "mustHave": true,
+          "skill": {
+            "id": "5239b062-aca4-411c-b8eb-7efc44a217d4",
+            "name": "Internal Communications"
+          }
+        },
+        {
+          "mustHave": true,
+          "skill": {
+            "id": "f821a18e-7500-44ff-bc27-fa257f1b9bd2",
+            "name": "Strong Communication Skills"
+          }
+        }
+      ],
+      "source": "NATIVE",
+      "status": "CLOSED",
+      "title": "Account Executive",
+      "type": "FULL_TIME",
+      "updatedAt": "2024-10-25T17:00:00.437Z",
+      "workArrangementOption": "ONSITE"
+    }
+  },
+  "isAuthenticated": false
+}
