@@ -4,10 +4,12 @@ namespace App\Models;
 
 use App\Enums\ApplicationStatus;
 use App\Jobs\TailorApplication;
+use App\Pdf\DocumentRenderer;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 
 /**
  * The user's tracked intent to apply to a Job. Exactly one per Job.
@@ -102,6 +104,56 @@ class Application extends Model
         }
 
         return $moved;
+    }
+
+    /**
+     * Whether the user may edit the current TailoredApplication's reframeable text: only in needs_review.
+     */
+    public function canEditTailoredContent(): bool
+    {
+        return $this->status === ApplicationStatus::NeedsReview && $this->currentTailoredApplication !== null;
+    }
+
+    /**
+     * Saves the user's edits to the reframeable text of the current TailoredApplication, renders both
+     * PDFs again from the edited snapshot, and flags the Application as edited by the user. The status
+     * stays as it is.
+     *
+     * Only allowed in needs_review. The edits only land if the Application is still in needs_review
+     * with the same current TailoredApplication once the PDFs are rendered. Either way the model is
+     * refreshed from the database.
+     *
+     * @param  array<string, mixed>  $edits  shaped as TailoredApplication::reviseText() expects
+     * @return bool false when the Application isn't (or is no longer) in needs_review with documents
+     */
+    public function saveTailoredContent(array $edits, DocumentRenderer $documentRenderer): bool
+    {
+        if (! $this->canEditTailoredContent()) {
+            return false;
+        }
+
+        $tailoredApplication = $this->currentTailoredApplication;
+
+        $tailoredApplication->reviseText($edits);
+        $tailoredApplication->fill($documentRenderer->render($this, $tailoredApplication->cv_data, $tailoredApplication->cover_letter_data));
+
+        $saved = DB::transaction(function () use ($tailoredApplication) {
+            $flagged = static::query()
+                ->whereKey($this->getKey())
+                ->where('status', ApplicationStatus::NeedsReview)
+                ->where('current_tailored_application_id', $tailoredApplication->id)
+                ->update(['edited_by_user' => true]) === 1;
+
+            if ($flagged) {
+                $tailoredApplication->save();
+            }
+
+            return $flagged;
+        });
+
+        $this->refresh();
+
+        return $saved;
     }
 
     /**

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Http\Requests\Concerns\SplitsListInput;
 use App\Models\MasterProfileEntry;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
@@ -17,6 +18,8 @@ use Illuminate\Validation\Rule;
  */
 abstract class MasterProfileEntryRequest extends FormRequest
 {
+    use SplitsListInput;
+
     /**
      * The URL segment and page section of this entry type, e.g. "experiences".
      */
@@ -146,25 +149,10 @@ abstract class MasterProfileEntryRequest extends FormRequest
     }
 
     /**
-     * Trims each item and drops blank ones. A missing field is an empty list.
-     *
      * @param  callable(string): array<int, string>  $split
      */
     private function items(string $key, callable $split): mixed
     {
-        $items = $this->input($key) ?? [];
-
-        if (is_string($items)) {
-            $items = $split($items);
-        }
-
-        if (! is_array($items)) {
-            return $items;
-        }
-
-        return array_values(array_filter(
-            array_map(fn ($item) => is_string($item) ? trim($item) : $item, $items),
-            fn ($item) => $item !== '' && $item !== null,
-        ));
+        return $this->listItems($this->input($key), $split);
     }
 }

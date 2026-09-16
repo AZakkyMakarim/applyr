@@ -28,6 +28,39 @@ class TailoredApplication extends Model
     }
 
     /**
+     * Replaces the snapshot's reframeable text with the user's edits, leaving every fact as it is.
+     * Only fields the snapshot already has are replaced, so an unknown entry or a field the entry
+     * doesn't have (an Education's achievements) is ignored, and anything not submitted keeps its text.
+     * The snapshot is changed on the model but not saved.
+     *
+     * @param  array{professional_summary?: ?string, entries?: array<string, array{description?: ?string, achievements?: list<string>}>, opening_paragraph?: string, body_paragraphs?: list<string>, closing_paragraph?: string}  $edits
+     */
+    public function reviseText(array $edits): void
+    {
+        $cvData = $this->cv_data;
+
+        if (array_key_exists('professional_summary', $edits)) {
+            $cvData['personal_info']['professional_summary'] = $edits['professional_summary'];
+        }
+
+        foreach (['experiences', 'educations', 'projects'] as $section) {
+            foreach ($cvData[$section] as $entryId => $entry) {
+                $cvData[$section][$entryId] = array_replace($entry, array_intersect_key(
+                    $edits['entries'][$entryId] ?? [],
+                    array_flip(['description', 'achievements']),
+                    $entry,
+                ));
+            }
+        }
+
+        $this->cv_data = $cvData;
+        $this->cover_letter_data = array_replace($this->cover_letter_data, array_intersect_key(
+            $edits,
+            array_flip(['opening_paragraph', 'body_paragraphs', 'closing_paragraph']),
+        ));
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array

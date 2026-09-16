@@ -373,6 +373,7 @@ class TailoringTest extends TestCase
     {
         $application = $this->applicationFor('regenerated');
         $old = $this->giveEarlierTailoredApplication($application);
+        $application->update(['edited_by_user' => true]);
         $content = $this->validContent();
         $content['professional_summary'] = 'Regenerated summary.';
         $this->fakeGeminiSequence($content);
@@ -384,12 +385,14 @@ class TailoringTest extends TestCase
         $this->assertNotSame($old->id, $application->current_tailored_application_id);
         $this->assertSame('Regenerated summary.', $application->currentTailoredApplication->cv_data['personal_info']['professional_summary']);
         $this->assertSame(2, $application->tailoredApplications()->count());
+        $this->assertFalse($application->edited_by_user, 'Fresh AI documents are no longer edited by the user.');
     }
 
     public function test_a_failed_regeneration_leaves_the_old_documents_current_and_viewable(): void
     {
         $application = $this->applicationFor('regeneration-failed');
         $old = $this->giveEarlierTailoredApplication($application);
+        $application->update(['edited_by_user' => true]);
         $invalid = $this->validContent();
         $invalid['professional_summary'] = '';
         $this->fakeGeminiSequence($invalid, $invalid, $invalid);
@@ -399,6 +402,7 @@ class TailoringTest extends TestCase
         $application->refresh();
         $this->assertSame(ApplicationStatus::TailoringFailed, $application->status);
         $this->assertSame($old->id, $application->current_tailored_application_id);
+        $this->assertTrue($application->edited_by_user, 'The edited documents are still the current ones.');
         $this->get(route('applications.show', $application))
             ->assertOk()
             ->assertSee('src="'.route('applications.cv', $application).'"', false);

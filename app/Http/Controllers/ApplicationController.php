@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Enums\ApplicationAction;
 use App\Enums\ApplicationStatus;
+use App\Http\Requests\TailoredContentRequest;
 use App\Models\Application;
+use App\Pdf\DocumentRenderer;
 use App\Pdf\PdfRenderer;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -53,6 +55,20 @@ class ApplicationController extends Controller
         }
 
         return $redirect->with('status', "Application {$action->pastTense()}.");
+    }
+
+    /**
+     * Saves the editor's reframeable text, refusing it unless the Application is in needs_review.
+     */
+    public function updateTailoredContent(TailoredContentRequest $request, Application $application, DocumentRenderer $documentRenderer): RedirectResponse
+    {
+        $redirect = to_route('applications.show', $application);
+
+        if (! $application->saveTailoredContent($request->validated(), $documentRenderer)) {
+            return $redirect->with('error', "Documents cannot be edited while the Application is {$application->status->label()}.");
+        }
+
+        return $redirect->with('status', 'Documents saved.');
     }
 
     public function cv(Request $request, Application $application): StreamedResponse

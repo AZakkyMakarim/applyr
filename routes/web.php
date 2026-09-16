@@ -14,6 +14,7 @@ Route::view('/', 'dashboard')->name('dashboard');
 Route::resource('applications', ApplicationController::class)->only(['index', 'show']);
 Route::get('applications/{application}/cv', [ApplicationController::class, 'cv'])->name('applications.cv');
 Route::get('applications/{application}/cover-letter', [ApplicationController::class, 'coverLetter'])->name('applications.cover-letter');
+Route::put('applications/{application}/tailored-content', [ApplicationController::class, 'updateTailoredContent'])->name('applications.tailored-content.update');
 Route::patch('applications/{application}/{action}', [ApplicationController::class, 'transition'])->name('applications.transition');
 
 Route::resource('search-profiles', SearchProfileController::class)->except('show');

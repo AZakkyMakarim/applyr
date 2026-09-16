@@ -109,8 +109,10 @@ class TailorApplication implements ShouldQueue
                 'cover_letter_pdf_path' => $coverLetterPdfPath,
             ]);
 
+            // Fresh AI documents replace any the user edited, so they are no longer flagged as edited.
             $moved = $application->transitionTo(ApplicationStatus::NeedsReview, [
                 'current_tailored_application_id' => $tailoredApplication->id,
+                'edited_by_user' => false,
             ]);
 
             // Rejected while tailoring ran: the reject stands and these documents are dropped.

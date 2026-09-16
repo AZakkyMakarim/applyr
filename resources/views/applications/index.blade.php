@@ -27,7 +27,10 @@
                             <p class="mt-1 text-sm text-gray-500">{{ $application->job->platform->label() }}</p>
                         </div>
 
-                        @include('applications._status-badge', ['status' => $application->status])
+                        <div class="flex flex-wrap items-center gap-2">
+                            @include('applications._status-badge', ['status' => $application->status])
+                            @include('applications._edited-badge')
+                        </div>
                     </a>
                 </li>
             @endforeach

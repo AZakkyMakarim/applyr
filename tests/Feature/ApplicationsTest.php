@@ -240,9 +240,26 @@ class ApplicationsTest extends TestCase
         Storage::disk(PdfRenderer::DISK)->put("{$directory}/cv.pdf", "%PDF-{$label}-cv");
         Storage::disk(PdfRenderer::DISK)->put("{$directory}/cover_letter.pdf", "%PDF-{$label}-cover-letter");
 
+        $contact = ['full_name' => 'Ada Lovelace', 'email' => 'ada@example.com', 'phone' => null, 'location' => null, 'links' => []];
+
         $tailored = $application->tailoredApplications()->create([
-            'cv_data' => [],
-            'cover_letter_data' => [],
+            'cv_data' => [
+                'personal_info' => [...$contact, 'professional_summary' => 'Summary.', 'photo_path' => null, 'show_photo' => false],
+                'skills' => [],
+                'experiences' => [],
+                'educations' => [],
+                'projects' => [],
+            ],
+            'cover_letter_data' => [
+                'letterhead' => $contact,
+                'date' => '2026-09-10',
+                'subject' => 'Re: Application for Software Engineer',
+                'greeting' => 'Dear Initech Hiring Team',
+                'opening_paragraph' => 'Opening.',
+                'body_paragraphs' => ['Body.'],
+                'closing_paragraph' => 'Closing.',
+                'sign_off' => 'Sincerely, Ada Lovelace',
+            ],
             'cv_pdf_path' => "{$directory}/cv.pdf",
             'cover_letter_pdf_path' => "{$directory}/cover_letter.pdf",
         ]);

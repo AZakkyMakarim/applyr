@@ -18,6 +18,7 @@
 
         <div class="flex flex-wrap items-center gap-3">
             @include('applications._status-badge', ['status' => $application->status])
+            @include('applications._edited-badge')
 
             @foreach (\App\Enums\ApplicationAction::availableFor($application) as $action)
                 <form method="POST" action="{{ route('applications.transition', [$application, $action]) }}">
@@ -111,5 +112,9 @@
                 </section>
             @endforeach
         </div>
+
+        @if ($application->canEditTailoredContent())
+            @include('applications._editor')
+        @endif
     @endif
 @endsection
