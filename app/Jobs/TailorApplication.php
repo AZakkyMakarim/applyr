@@ -3,6 +3,8 @@
 namespace App\Jobs;
 
 use App\Ai\AiProvider;
+use App\Ai\AiThrottle;
+use App\Ai\Exceptions\RateLimitedException;
 use App\Enums\ApplicationStatus;
 use App\Models\Application;
 use App\Models\MasterProfile;
@@ -12,6 +14,7 @@ use App\Pdf\PdfRenderer;
 use App\Tailoring\DocumentSnapshots;
 use App\Tailoring\TailoringPrompt;
 use App\Tailoring\TailoringResponseValidator;
+use DateTimeInterface;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
@@ -22,14 +25,31 @@ use Illuminate\Support\Str;
  * Generates an Application's TailoredApplication with the AI provider, renders both PDFs,
  * and hands the Application to the user for review. An AI response that fails fact validation is
  * regenerated, and never rendered or stored.
+ *
+ * AI calls are throttled: tailoring that finds the rate limit spent, or that meets a 429, is released
+ * back to the queue to run again later, and a release never counts as a failed validation attempt.
+ * The limit is checked once per run, so a run may overshoot it by its remaining regenerations.
  */
 class TailorApplication implements ShouldQueue
 {
     use Queueable;
 
+    /**
+     * Any exception fails the job at once; releases aren't exceptions and don't count.
+     */
+    public int $maxExceptions = 1;
+
     public function __construct(public readonly Application $application) {}
 
-    public function handle(AiProvider $ai, PdfRenderer $pdfRenderer, TelegramNotifier $notifier): void
+    /**
+     * Released jobs keep running for a day, whatever the worker's --tries.
+     */
+    public function retryUntil(): DateTimeInterface
+    {
+        return now()->addDay();
+    }
+
+    public function handle(AiProvider $ai, AiThrottle $throttle, PdfRenderer $pdfRenderer, TelegramNotifier $notifier): void
     {
         $application = $this->application->refresh();
 
@@ -49,7 +69,22 @@ class TailorApplication implements ShouldQueue
 
         $job = $application->job;
 
-        $aiResponse = $this->generateValidAiResponse($ai, new TailoringPrompt($job, $masterProfile), new TailoringResponseValidator($masterProfile));
+        // Checked once per job rather than per call, so regenerations under way are never cut off.
+        $wait = $throttle->secondsUntilAvailable();
+
+        if ($wait > 0) {
+            $this->release($wait);
+
+            return;
+        }
+
+        try {
+            $aiResponse = $this->generateValidAiResponse($ai, $throttle, new TailoringPrompt($job, $masterProfile), new TailoringResponseValidator($masterProfile));
+        } catch (RateLimitedException) {
+            $this->release($throttle->recordRateLimited());
+
+            return;
+        }
 
         // Every attempt failed validation; the user sees it on the dashboard, with no Telegram message.
         if ($aiResponse === null) {
@@ -99,13 +134,17 @@ class TailorApplication implements ShouldQueue
      * the regeneration limit.
      *
      * @return array<string, mixed>|null the first valid response, or null once every attempt failed
+     *
+     * @throws RateLimitedException on a 429, which ends the run without using up an attempt
      */
-    private function generateValidAiResponse(AiProvider $ai, TailoringPrompt $prompt, TailoringResponseValidator $validator): ?array
+    private function generateValidAiResponse(AiProvider $ai, AiThrottle $throttle, TailoringPrompt $prompt, TailoringResponseValidator $validator): ?array
     {
         $limit = max(1, (int) config('applyr.tailoring.regeneration_limit'));
 
         for ($attempt = 1; $attempt <= $limit; $attempt++) {
+            $throttle->recordCall();
             $aiResponse = $ai->generate($prompt->text(), TailoringPrompt::responseSchema());
+            $throttle->recordAnswered();
             $failures = $validator->failures($aiResponse);
 
             if ($failures === []) {

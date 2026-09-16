@@ -481,6 +481,174 @@ class TailoringTest extends TestCase
         $this->assertSame('Valid experience description.', $cv['experiences']["experience:{$this->experience->id}"]['description']);
     }
 
+    public function test_tailoring_beyond_the_rate_limit_is_released_without_calling_gemini(): void
+    {
+        config(['services.gemini.rate_limit_per_minute' => 2]);
+        $applications = [$this->applicationFor('burst-1'), $this->applicationFor('burst-2'), $this->applicationFor('burst-3')];
+        $this->fakeGeminiSequence($this->validContent(), $this->validContent(), $this->validContent());
+
+        $this->runTailoring($applications[0])->assertNotReleased();
+        $this->runTailoring($applications[1])->assertNotReleased();
+        $this->runTailoring($applications[2])->assertReleased(delay: 60);
+
+        $this->assertCount(2, $this->geminiRequests());
+        $this->assertSame(ApplicationStatus::PendingTailoring, $applications[2]->fresh()->status);
+
+        $this->travel(59)->seconds();
+        $this->runTailoring($applications[2])->assertReleased(delay: 1);
+        $this->assertCount(2, $this->geminiRequests());
+
+        $this->travel(1)->seconds();
+        $this->runTailoring($applications[2])->assertNotReleased();
+        $this->assertCount(3, $this->geminiRequests());
+        $this->assertSame(ApplicationStatus::NeedsReview, $applications[2]->fresh()->status);
+    }
+
+    public function test_the_rate_limit_holds_over_any_sliding_minute(): void
+    {
+        config(['services.gemini.rate_limit_per_minute' => 2]);
+        $this->fakeGeminiSequence($this->validContent(), $this->validContent(), $this->validContent());
+
+        $this->runTailoring($this->applicationFor('at-0s'))->assertNotReleased();
+        $this->travel(50)->seconds();
+        $this->runTailoring($this->applicationFor('at-50s'))->assertNotReleased();
+        $this->travel(10)->seconds();
+        $this->runTailoring($this->applicationFor('at-60s'))->assertNotReleased();
+
+        $this->runTailoring($this->applicationFor('also-at-60s'))->assertReleased(delay: 50);
+        $this->assertCount(3, $this->geminiRequests());
+    }
+
+    public function test_every_regeneration_counts_against_the_rate_limit(): void
+    {
+        config(['services.gemini.rate_limit_per_minute' => 3]);
+        $first = $this->applicationFor('regenerated');
+        $second = $this->applicationFor('waits-for-the-regenerations');
+        $invalid = $this->validContent();
+        $invalid['professional_summary'] = '';
+        $this->fakeGeminiSequence($invalid, $invalid, $this->validContent(), $this->validContent());
+
+        $this->runTailoring($first)->assertNotReleased();
+        $this->runTailoring($second)->assertReleased(delay: 60);
+
+        $this->assertCount(3, $this->geminiRequests());
+        $this->assertSame(ApplicationStatus::NeedsReview, $first->fresh()->status);
+        $this->assertSame(ApplicationStatus::PendingTailoring, $second->fresh()->status);
+    }
+
+    public function test_tailoring_that_exits_before_calling_gemini_is_neither_released_nor_counted(): void
+    {
+        config(['services.gemini.rate_limit_per_minute' => 1]);
+        $this->fakeGeminiSequence($this->validContent());
+        $application = $this->applicationFor('tailored');
+
+        $this->runTailoring($this->applicationFor('rejected', ApplicationStatus::Rejected))->assertNotReleased();
+        $this->runTailoring($application)->assertNotReleased();
+
+        $this->assertSame(ApplicationStatus::NeedsReview, $application->fresh()->status);
+    }
+
+    public function test_a_429_releases_tailoring_with_exponential_backoff(): void
+    {
+        $application = $this->applicationFor('rate-limited');
+        $this->fakeGeminiSequence(429, 429, 429);
+
+        $this->runTailoring($application)->assertReleased(delay: 60);
+
+        $this->travel(60)->seconds();
+        $this->runTailoring($application)->assertReleased(delay: 120);
+
+        $this->travel(120)->seconds();
+        $this->runTailoring($application)->assertReleased(delay: 240);
+
+        $this->assertCount(3, $this->geminiRequests());
+        $this->assertSame(ApplicationStatus::PendingTailoring, $application->fresh()->status);
+        $this->assertSame(0, TailoredApplication::count());
+        $this->assertSame([], $this->pdfRenderer->rendered);
+    }
+
+    public function test_the_429_backoff_is_capped_at_an_hour(): void
+    {
+        $application = $this->applicationFor('rate-limited-for-long');
+        $this->fakeGeminiSequence(...array_fill(0, 8, 429));
+
+        foreach ([60, 120, 240, 480, 960, 1920, 3600, 3600] as $expectedDelay) {
+            $this->runTailoring($application)->assertReleased(delay: $expectedDelay);
+            $this->travel($expectedDelay)->seconds();
+        }
+    }
+
+    public function test_other_tailoring_waits_out_a_429_backoff_without_calling_gemini(): void
+    {
+        $rateLimited = $this->applicationFor('rate-limited');
+        $waiting = $this->applicationFor('waiting');
+        $this->fakeGeminiSequence(429, $this->validContent());
+
+        $this->runTailoring($rateLimited)->assertReleased(delay: 60);
+
+        $this->travel(30)->seconds();
+        $this->runTailoring($waiting)->assertReleased(delay: 30);
+        $this->assertCount(1, $this->geminiRequests());
+
+        $this->travel(30)->seconds();
+        $this->runTailoring($waiting)->assertNotReleased();
+        $this->assertSame(ApplicationStatus::NeedsReview, $waiting->fresh()->status);
+    }
+
+    public function test_an_answered_call_resets_the_429_backoff(): void
+    {
+        $first = $this->applicationFor('first');
+        $second = $this->applicationFor('second');
+        $this->fakeGeminiSequence(429, 429, $this->validContent(), 429);
+
+        $this->runTailoring($first)->assertReleased(delay: 60);
+        $this->travel(60)->seconds();
+        $this->runTailoring($first)->assertReleased(delay: 120);
+        $this->travel(120)->seconds();
+        $this->runTailoring($first)->assertNotReleased();
+
+        $this->runTailoring($second)->assertReleased(delay: 60);
+    }
+
+    public function test_the_429_backoff_starts_over_once_a_quiet_cooldown_has_passed(): void
+    {
+        $application = $this->applicationFor('rate-limited-again-later');
+        $this->fakeGeminiSequence(429, 429, 429);
+
+        $this->runTailoring($application)->assertReleased(delay: 60);
+        $this->travel(60)->seconds();
+        $this->runTailoring($application)->assertReleased(delay: 120);
+
+        $this->travel(241)->seconds();
+        $this->runTailoring($application)->assertReleased(delay: 60);
+    }
+
+    public function test_a_429_does_not_consume_a_regeneration_attempt(): void
+    {
+        config(['applyr.tailoring.regeneration_limit' => 3]);
+        $application = $this->applicationFor('rate-limited-then-regenerated');
+        $invalid = $this->validContent();
+        $invalid['entries'][0]['entry_id'] = 'experience:999999';
+        $this->fakeGeminiSequence(429, $invalid, $invalid, $this->validContent());
+
+        $this->runTailoring($application)->assertReleased(delay: 60);
+        $this->travel(60)->seconds();
+        $this->runTailoring($application)->assertNotReleased();
+
+        $this->assertCount(4, $this->geminiRequests());
+        $application->refresh();
+        $this->assertSame(ApplicationStatus::NeedsReview, $application->status);
+        $this->assertSame('Valid summary.', $application->currentTailoredApplication->cv_data['personal_info']['professional_summary']);
+    }
+
+    public function test_tailoring_survives_its_releases_but_fails_on_its_first_error(): void
+    {
+        $tailoring = new TailorApplication($this->applicationFor('released'));
+
+        $this->assertEquals(now()->addDay(), $tailoring->retryUntil());
+        $this->assertSame(1, $tailoring->maxExceptions);
+    }
+
     public function test_gemini_reports_a_429_as_rate_limited(): void
     {
         Http::fake(['generativelanguage.googleapis.com/*' => Http::response(['error' => ['code' => 429]], 429)]);
@@ -571,16 +739,18 @@ class TailoringTest extends TestCase
     }
 
     /**
-     * Gemini answers successive calls with each content in turn.
+     * Gemini answers successive calls with each content in turn; a status code answers with that HTTP error.
      *
-     * @param  array<string, mixed>  ...$contents
+     * @param  array<string, mixed>|int  ...$contents
      */
-    private function fakeGeminiSequence(array ...$contents): void
+    private function fakeGeminiSequence(array|int ...$contents): void
     {
         $sequence = Http::sequence();
 
         foreach ($contents as $content) {
-            $sequence->push($this->geminiEnvelope($content));
+            is_int($content)
+                ? $sequence->push(['error' => ['code' => $content]], $content)
+                : $sequence->push($this->geminiEnvelope($content));
         }
 
         Http::fake([
@@ -618,6 +788,18 @@ class TailoringTest extends TestCase
                 'closing_paragraph' => 'Valid closing.',
             ],
         ];
+    }
+
+    /**
+     * Runs one queue attempt of TailorApplication, recording a release for assertions.
+     */
+    private function runTailoring(Application $application): TailorApplication
+    {
+        $tailoring = (new TailorApplication($application))->withFakeQueueInteractions();
+
+        app()->call([$tailoring, 'handle']);
+
+        return $tailoring;
     }
 
     /**
