@@ -95,7 +95,10 @@
             <h2 class="text-lg font-semibold">Photo</h2>
 
             @if ($masterProfile->photo_path)
-                <img src="{{ route('master-profile.photo', ['v' => $masterProfile->updated_at?->timestamp]) }}" alt="Profile photo" class="h-24 w-24 rounded-lg object-cover">
+                <div class="flex items-end gap-4">
+                    <img src="{{ route('master-profile.photo', ['v' => $masterProfile->updated_at?->timestamp]) }}" alt="Profile photo" class="h-24 w-24 rounded-lg object-cover">
+                    <button type="submit" form="remove-photo" class="text-sm text-red-700 hover:text-red-900">Remove photo</button>
+                </div>
             @endif
 
             <div>
@@ -113,6 +116,13 @@
 
         <button type="submit" class="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">Save MasterProfile</button>
     </form>
+
+    @if ($masterProfile->photo_path)
+        <form id="remove-photo" method="POST" action="{{ route('master-profile.photo.destroy') }}" onsubmit="return confirm('Remove your photo?')">
+            @csrf
+            @method('DELETE')
+        </form>
+    @endif
 
     @if ($masterProfile->exists)
         @foreach ([

@@ -101,6 +101,23 @@ class MasterProfile extends Model
     }
 
     /**
+     * Forget the photo, save, and only then delete its file. show_photo is left as it is.
+     */
+    public function removePhoto(): void
+    {
+        $removedPhotoPath = $this->photo_path;
+
+        if ($removedPhotoPath === null) {
+            return;
+        }
+
+        $this->photo_path = null;
+        $this->save();
+
+        Storage::disk(self::PHOTO_DISK)->delete($removedPhotoPath);
+    }
+
+    /**
      * Copy the photo into $directory on the photo disk, so a snapshot keeps its own copy however
      * the photo is later replaced or removed.
      *

@@ -24,6 +24,7 @@ Route::patch('search-profiles/{search_profile}/resume', [SearchProfileController
 Route::get('master-profile', [MasterProfileController::class, 'edit'])->name('master-profile.edit');
 Route::put('master-profile', [MasterProfileController::class, 'update'])->name('master-profile.update');
 Route::get('master-profile/photo', [MasterProfileController::class, 'photo'])->name('master-profile.photo');
+Route::delete('master-profile/photo', [MasterProfileController::class, 'destroyPhoto'])->name('master-profile.photo.destroy');
 
 Route::prefix('master-profile')->name('master-profile.')->group(function () {
     Route::resource('experiences', ExperienceController::class)->only(['store', 'update', 'destroy']);

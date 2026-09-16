@@ -37,6 +37,13 @@ class MasterProfileController extends Controller
         return to_route('master-profile.edit')->with('status', 'MasterProfile saved.');
     }
 
+    public function destroyPhoto(): RedirectResponse
+    {
+        MasterProfile::current()->removePhoto();
+
+        return to_route('master-profile.edit')->with('status', 'Photo removed.');
+    }
+
     public function photo(): StreamedResponse
     {
         $photoPath = MasterProfile::current()->photo_path;

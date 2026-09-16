@@ -188,8 +188,12 @@ class TailoringTest extends TestCase
         $cv = $application->currentTailoredApplication->cv_data;
         $photoPath = $cv['personal_info']['photo_path'];
 
-        // The snapshot keeps its own copy of the photo rather than pointing at the MasterProfile's.
+        // The snapshot keeps its own copy of the photo rather than pointing at the MasterProfile's,
+        // so removing the MasterProfile photo leaves it in place.
         $this->assertStringStartsWith("tailored-applications/{$application->id}/photos/", $photoPath);
+        $this->assertSame('photo-bytes', Storage::disk(MasterProfile::PHOTO_DISK)->get($photoPath));
+
+        MasterProfile::sole()->removePhoto();
         $this->assertSame('photo-bytes', Storage::disk(MasterProfile::PHOTO_DISK)->get($photoPath));
 
         $this->assertSame([

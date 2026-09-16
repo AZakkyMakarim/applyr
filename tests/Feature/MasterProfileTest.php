@@ -201,6 +201,50 @@ class MasterProfileTest extends TestCase
         Storage::disk('local')->assertExists($newPath);
     }
 
+    public function test_removing_the_photo_deletes_the_file_and_leaves_show_photo_alone(): void
+    {
+        Storage::fake('local');
+
+        $this->put('/master-profile', $this->validInput(['show_photo' => '1', 'photo' => UploadedFile::fake()->image('me.jpg')]));
+        $photoPath = MasterProfile::sole()->photo_path;
+
+        $this->delete('/master-profile/photo')
+            ->assertRedirect('/master-profile')
+            ->assertSessionHas('status', 'Photo removed.');
+
+        $this->assertNull(MasterProfile::sole()->photo_path);
+        $this->assertTrue(MasterProfile::sole()->show_photo);
+        Storage::disk('local')->assertMissing($photoPath);
+
+        $this->get('/master-profile/photo')->assertNotFound();
+        $this->get('/master-profile')
+            ->assertDontSee('alt="Profile photo"', false)
+            ->assertDontSee('Remove photo')
+            ->assertSee('Upload photo');
+    }
+
+    public function test_the_remove_photo_action_is_offered_only_when_there_is_a_photo(): void
+    {
+        Storage::fake('local');
+
+        $this->put('/master-profile', $this->validInput());
+        $this->get('/master-profile')->assertDontSee('Remove photo');
+
+        $this->put('/master-profile', $this->validInput(['photo' => UploadedFile::fake()->image('me.jpg')]));
+        $this->get('/master-profile')->assertSee('Remove photo');
+    }
+
+    public function test_removing_a_photo_when_there_is_none_does_nothing(): void
+    {
+        $this->delete('/master-profile/photo')->assertRedirect('/master-profile');
+        $this->assertSame(0, MasterProfile::count());
+
+        $this->put('/master-profile', $this->validInput());
+
+        $this->delete('/master-profile/photo')->assertRedirect('/master-profile');
+        $this->assertNull(MasterProfile::sole()->photo_path);
+    }
+
     public function test_there_is_no_photo_to_serve_before_one_is_uploaded(): void
     {
         $this->get('/master-profile/photo')->assertNotFound();
