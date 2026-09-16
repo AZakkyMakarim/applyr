@@ -47,6 +47,36 @@ cp -rf source dest          # NOT: cp -r source dest
 - `apt-get` - use `-y` flag
 - `brew` - use `HOMEBREW_NO_AUTO_UPDATE=1` env var
 
+## Build & Test
+
+Laravel app at the repo root (PHP 8.3+, Composer, Node). On Windows with Herd, `php`/`composer` are on the PowerShell PATH, not Git Bash.
+
+```bash
+# First-time setup (install deps, .env, app key, migrate, build assets)
+composer setup
+
+# Run the app locally (server, queue worker, logs, Vite)
+composer dev
+
+# Full test suite
+php artisan test
+
+# Single test file / single test
+php artisan test tests/Feature/DashboardTest.php
+php artisan test --filter=test_home_renders_the_dashboard_layout_without_logging_in
+
+# Code style (Laravel Pint)
+vendor/bin/pint            # fix
+vendor/bin/pint --test     # check only
+
+# Frontend assets
+npm run build
+```
+
+Test harness (`tests/TestCase.php`, `phpunit.xml`): every test refreshes an in-memory SQLite database, queues run on the `sync` connection, and `Http::preventStrayRequests()` is on, so any outbound HTTP call that isn't `Http::fake()`d fails the test. The queue's database table is `queue_jobs`; `jobs` is reserved for the domain Job.
+
+App config lives in `config/applyr.php` (poll schedule, Adapter page cap, regeneration limit) and `config/services.php` (`telegram`, `gemini`); all keys are documented in `.env.example`.
+
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:6cd5cc61 -->
 ## Beads Issue Tracker
 
