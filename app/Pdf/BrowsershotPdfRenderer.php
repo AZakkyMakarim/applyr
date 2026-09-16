@@ -17,6 +17,7 @@ class BrowsershotPdfRenderer implements PdfRenderer
 
         Browsershot::html($html)
             ->format('A4')
+            ->margins(16, 16, 16, 16)
             ->showBackground()
             ->save($disk->path($path));
 

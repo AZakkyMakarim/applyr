@@ -101,6 +101,26 @@ class MasterProfile extends Model
     }
 
     /**
+     * Copy the photo into $directory on the photo disk, so a snapshot keeps its own copy however
+     * the photo is later replaced or removed.
+     *
+     * @return ?string the copy's path, or null when there is no photo file to copy
+     */
+    public function copyPhotoTo(string $directory): ?string
+    {
+        $disk = Storage::disk(self::PHOTO_DISK);
+
+        if ($this->photo_path === null || ! $disk->exists($this->photo_path)) {
+            return null;
+        }
+
+        $copyPath = $directory.'/'.basename($this->photo_path);
+        $disk->copy($this->photo_path, $copyPath);
+
+        return $copyPath;
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array

@@ -10,7 +10,7 @@ use App\Models\Application;
 use App\Models\MasterProfile;
 use App\Models\TailoredApplication;
 use App\Notifiers\TelegramNotifier;
-use App\Pdf\PdfRenderer;
+use App\Pdf\DocumentRenderer;
 use App\Tailoring\DocumentSnapshots;
 use App\Tailoring\TailoringPrompt;
 use App\Tailoring\TailoringResponseValidator;
@@ -49,7 +49,7 @@ class TailorApplication implements ShouldQueue
         return now()->addDay();
     }
 
-    public function handle(AiProvider $ai, AiThrottle $throttle, PdfRenderer $pdfRenderer, TelegramNotifier $notifier): void
+    public function handle(AiProvider $ai, AiThrottle $throttle, DocumentRenderer $documentRenderer, TelegramNotifier $notifier): void
     {
         $application = $this->application->refresh();
 
@@ -93,16 +93,12 @@ class TailorApplication implements ShouldQueue
             return;
         }
 
-        $snapshots = new DocumentSnapshots($job, $masterProfile, $aiResponse);
+        // The snapshot keeps its own photo, so replacing the MasterProfile photo never changes these documents.
+        $photoPath = $masterProfile->copyPhotoTo("tailored-applications/{$application->id}/photos/".Str::ulid());
+        $snapshots = new DocumentSnapshots($job, $masterProfile, $aiResponse, $photoPath);
         $cvData = $snapshots->cvData();
         $coverLetterData = $snapshots->coverLetterData();
-
-        $directory = "tailored-applications/{$application->id}/".Str::ulid();
-        $cvPdfPath = $pdfRenderer->render(view('documents.cv', ['cv' => $cvData])->render(), "{$directory}/cv.pdf");
-        $coverLetterPdfPath = $pdfRenderer->render(
-            view('documents.cover-letter', ['coverLetter' => $coverLetterData])->render(),
-            "{$directory}/cover_letter.pdf",
-        );
+        ['cv_pdf_path' => $cvPdfPath, 'cover_letter_pdf_path' => $coverLetterPdfPath] = $documentRenderer->render($application, $cvData, $coverLetterData);
 
         DB::transaction(function () use ($application, $cvData, $coverLetterData, $cvPdfPath, $coverLetterPdfPath) {
             $tailoredApplication = $application->tailoredApplications()->create([

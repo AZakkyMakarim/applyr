@@ -15,11 +15,13 @@ class DocumentSnapshots
 {
     /**
      * @param  array<string, mixed>  $aiResponse  the AI response, shaped by TailoringPrompt::responseSchema()
+     * @param  ?string  $photoPath  the snapshot's own copy of the MasterProfile photo, if there is one
      */
     public function __construct(
         private readonly Job $job,
         private readonly MasterProfile $masterProfile,
         private readonly array $aiResponse,
+        private readonly ?string $photoPath,
     ) {}
 
     /**
@@ -31,7 +33,7 @@ class DocumentSnapshots
             'personal_info' => [
                 ...$this->contactDetails(),
                 'professional_summary' => $this->aiResponse['professional_summary'],
-                'photo_path' => $this->masterProfile->photo_path,
+                'photo_path' => $this->photoPath,
                 'show_photo' => $this->masterProfile->show_photo,
             ],
             'skills' => $this->masterProfile->skills,

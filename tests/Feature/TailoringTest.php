@@ -51,6 +51,7 @@ class TailoringTest extends TestCase
 
         Sleep::fake();
         Storage::fake(PdfRenderer::DISK);
+        Storage::disk(MasterProfile::PHOTO_DISK)->put('master-profile/photo.jpg', 'photo-bytes');
         $this->freezeTime();
 
         config([
@@ -182,7 +183,13 @@ class TailoringTest extends TestCase
 
         $this->artisan('applyr:poll')->assertSuccessful();
 
-        $cv = $this->softwareEngineerApplication()->currentTailoredApplication->cv_data;
+        $application = $this->softwareEngineerApplication();
+        $cv = $application->currentTailoredApplication->cv_data;
+        $photoPath = $cv['personal_info']['photo_path'];
+
+        // The snapshot keeps its own copy of the photo rather than pointing at the MasterProfile's.
+        $this->assertStringStartsWith("tailored-applications/{$application->id}/photos/", $photoPath);
+        $this->assertSame('photo-bytes', Storage::disk(MasterProfile::PHOTO_DISK)->get($photoPath));
 
         $this->assertSame([
             'full_name' => 'Ahmad Zakky',
@@ -191,7 +198,7 @@ class TailoringTest extends TestCase
             'location' => 'Jakarta, Indonesia',
             'links' => [['label' => 'GitHub', 'url' => 'https://github.com/zakky']],
             'professional_summary' => 'Reframed summary for PT. BEONE OPTIMA SOLUSI.',
-            'photo_path' => 'master-profile/photo.jpg',
+            'photo_path' => $photoPath,
             'show_photo' => true,
         ], $cv['personal_info']);
 
