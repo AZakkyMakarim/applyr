@@ -13,8 +13,14 @@ class MasterProfileController extends Controller
 {
     public function edit(): View
     {
+        $masterProfile = MasterProfile::current();
+
+        if ($masterProfile->exists) {
+            $masterProfile->load(['experiences', 'educations', 'projects']);
+        }
+
         return view('master-profile.edit', [
-            'masterProfile' => MasterProfile::current(),
+            'masterProfile' => $masterProfile,
         ]);
     }
 

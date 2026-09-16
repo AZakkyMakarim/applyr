@@ -114,6 +114,26 @@
         <button type="submit" class="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">Save MasterProfile</button>
     </form>
 
+    @if ($masterProfile->exists)
+        @foreach ([
+            ['section' => 'experiences', 'heading' => 'Experience', 'noun' => 'experience', 'model' => \App\Models\Experience::class],
+            ['section' => 'educations', 'heading' => 'Education', 'noun' => 'education', 'model' => \App\Models\Education::class],
+            ['section' => 'projects', 'heading' => 'Projects', 'noun' => 'project', 'model' => \App\Models\Project::class],
+        ] as ['section' => $section, 'heading' => $heading, 'noun' => $noun, 'model' => $model])
+            <section id="{{ $section }}" class="mt-10 max-w-2xl space-y-4">
+                <h2 class="text-lg font-semibold">{{ $heading }}</h2>
+
+                @foreach ($masterProfile->{$section} as $entry)
+                    @include('master-profile._entry-form', ['fields' => "master-profile._{$noun}-fields"])
+                @endforeach
+
+                @include('master-profile._entry-form', ['entry' => new $model, 'fields' => "master-profile._{$noun}-fields"])
+            </section>
+        @endforeach
+    @else
+        <p class="mt-10 max-w-2xl text-sm text-gray-600">Save your personal info first to add experience, education and projects.</p>
+    @endif
+
     <script>
         // Rendered rows are keyed 0..n-1; new rows continue after them so names never collide.
         let nextRowIndex = {{ max(count($links), count($skills)) }};
@@ -128,6 +148,22 @@
             const remove = event.target.closest('[data-remove-row]');
             if (remove) {
                 remove.closest('[data-row]').remove();
+            }
+        });
+
+        // A current entry has no end date, so ticking "current" clears and disables it.
+        const syncEndDate = (toggle) => {
+            const endDate = toggle.form.elements.end_date;
+            endDate.disabled = toggle.checked;
+            if (toggle.checked) {
+                endDate.value = '';
+            }
+        };
+
+        document.querySelectorAll('[data-current-toggle]').forEach(syncEndDate);
+        document.addEventListener('change', (event) => {
+            if (event.target.matches('[data-current-toggle]')) {
+                syncEndDate(event.target);
             }
         });
     </script>

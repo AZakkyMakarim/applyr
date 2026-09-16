@@ -5,12 +5,14 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Table;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * The user's ground-truth personal info, links and skills. A single mutable row
- * with no user_id and no versioning; it exists only once the user first saves it.
+ * The user's ground-truth personal info, links, skills, and their Experience, Education
+ * and Project entries. A single mutable row with no user_id and no versioning; it exists
+ * only once the user first saves it, and entries can only be added after that.
  */
 #[Table('master_profile')]
 #[Fillable([
@@ -45,6 +47,30 @@ class MasterProfile extends Model
     public static function current(): self
     {
         return static::query()->firstOrNew();
+    }
+
+    /**
+     * @return HasMany<Experience, $this>
+     */
+    public function experiences(): HasMany
+    {
+        return $this->hasMany(Experience::class)->newestFirst();
+    }
+
+    /**
+     * @return HasMany<Education, $this>
+     */
+    public function educations(): HasMany
+    {
+        return $this->hasMany(Education::class)->newestFirst();
+    }
+
+    /**
+     * @return HasMany<Project, $this>
+     */
+    public function projects(): HasMany
+    {
+        return $this->hasMany(Project::class)->newestFirst();
     }
 
     /**
