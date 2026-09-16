@@ -3,12 +3,9 @@
 namespace App\Adapters\JobStreet;
 
 use App\Adapters\Adapter;
-use App\Adapters\Exceptions\AntiBotBlockedException;
-use App\Adapters\Exceptions\ApiErrorException;
 use App\Adapters\Exceptions\ShapeDriftException;
-use App\Adapters\Exceptions\TransportException;
+use App\Adapters\GraphQlClient;
 use App\Adapters\JobData;
-use App\Adapters\RetriesTransportFailures;
 use App\Enums\JobStatus;
 use App\Enums\JobType;
 use App\Enums\Platform;
@@ -17,10 +14,6 @@ use App\Enums\SalaryPeriod;
 use App\Enums\WorkArrangement;
 use App\Models\SearchProfile;
 use Carbon\CarbonImmutable;
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Http\Client\Response;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -29,8 +22,6 @@ use Throwable;
  */
 class JobStreetAdapter implements Adapter
 {
-    use RetriesTransportFailures;
-
     // jobstreet.co.id only redirects here.
     private const ENDPOINT = 'https://id.jobstreet.com/graphql';
 
@@ -85,7 +76,12 @@ class JobStreetAdapter implements Adapter
         }
         GRAPHQL;
 
-    private bool $hasSentRequest = false;
+    private readonly GraphQlClient $client;
+
+    public function __construct()
+    {
+        $this->client = new GraphQlClient(Platform::JobStreet, self::ENDPOINT, headers: self::HEADERS);
+    }
 
     public function platform(): Platform
     {
@@ -192,7 +188,7 @@ class JobStreetAdapter implements Adapter
      */
     private function searchPage(string $sessionId, array $searchIntent, int $page): array
     {
-        $body = $this->send([
+        $data = $this->client->query('JobSearchV7', self::SEARCH_JOBS_QUERY, ['params' => [
             'sessionId' => $sessionId,
             'searchContext' => ['brand' => 'jobstreet', 'channel' => 'web', 'intent' => 'SEARCH', 'source' => 'FE_SERP'],
             'searchIntent' => $searchIntent,
@@ -202,9 +198,9 @@ class JobStreetAdapter implements Adapter
                 'page' => $page,
                 'pageSize' => self::PAGE_SIZE,
             ],
-        ]);
+        ]]);
 
-        $results = $this->data($body)['jobSearchV7']['results'] ?? null;
+        $results = $data['jobSearchV7']['results'] ?? null;
 
         if (! is_array($results['jobs'] ?? null) || ! is_int($results['pagination']['resultCount'] ?? null)) {
             throw new ShapeDriftException(Platform::JobStreet, 'jobSearchV7.results.jobs or pagination is missing.', 200);
@@ -217,105 +213,17 @@ class JobStreetAdapter implements Adapter
     }
 
     /**
-     * Send one jobSearchV7 query and return the decoded body, classifying transport and HTTP failures.
-     *
-     * @param  array<string, mixed>  $params
-     * @return array<string, mixed>
-     */
-    private function send(array $params): array
-    {
-        $this->pace();
-
-        try {
-            $response = $this->retryingTransportFailures(Http::withHeaders(self::HEADERS))
-                ->asJson()
-                ->timeout(30)
-                ->post(self::ENDPOINT, [
-                    'operationName' => 'JobSearchV7',
-                    'variables' => ['params' => $params],
-                    'query' => self::SEARCH_JOBS_QUERY,
-                ]);
-        } catch (ConnectionException $e) {
-            throw new TransportException(Platform::JobStreet, $e->getMessage(), previous: $e);
-        }
-
-        $this->guardHttpFailure($response);
-
-        $body = $response->json();
-
-        if (! is_array($body)) {
-            throw new ShapeDriftException(Platform::JobStreet, 'Response body is not JSON: '.$this->snippet($response->body()), $response->status());
-        }
-
-        return $body;
-    }
-
-    /**
-     * The data object of a GraphQL body, or the API error it reports instead.
-     *
-     * @param  array<string, mixed>  $body
-     * @return array<string, mixed>
-     */
-    private function data(array $body): array
-    {
-        if (! empty($body['errors'])) {
-            $error = $body['errors'][0];
-            $code = $error['extensions']['code'] ?? 'UNKNOWN';
-
-            throw new ApiErrorException(Platform::JobStreet, "GraphQL error {$code}: ".($error['message'] ?? ''), 200);
-        }
-
-        if (! is_array($body['data'] ?? null)) {
-            throw new ShapeDriftException(Platform::JobStreet, 'Response has no data object.', 200);
-        }
-
-        return $body['data'];
-    }
-
-    private function guardHttpFailure(Response $response): void
-    {
-        if ($response->successful()) {
-            return;
-        }
-
-        $status = $response->status();
-        $message = "HTTP {$status}: ".$this->snippet($response->body());
-
-        if (($status === 403 && strtolower($response->header('Cf-Mitigated')) === 'challenge') || $status === 429) {
-            throw new AntiBotBlockedException(Platform::JobStreet, $message, $status);
-        }
-
-        if ($response->serverError()) {
-            throw new TransportException(Platform::JobStreet, $message, $status);
-        }
-
-        throw new ApiErrorException(Platform::JobStreet, $message, $status);
-    }
-
-    /**
-     * Space requests out so bursts don't raise Cloudflare's bot score.
-     */
-    private function pace(): void
-    {
-        if ($this->hasSentRequest) {
-            Sleep::for(config('applyr.adapters.request_delay_ms'))->milliseconds();
-        }
-
-        $this->hasSentRequest = true;
-    }
-
-    /**
      * @param  array<string, mixed>  $posting
      */
     private function toJobData(array $posting): JobData
     {
-        $externalId = $this->required($posting, 'id');
+        $externalId = $this->client->required($posting, 'id');
         $salary = $posting['salary'] ?? null;
 
         return new JobData(
             externalId: $externalId,
-            title: $this->required($posting, 'title'),
-            companyName: $this->required($posting['advertiser'] ?? [], 'name', 'advertiser.name'),
+            title: $this->client->required($posting, 'title'),
+            companyName: $this->client->required($posting['advertiser'] ?? [], 'name', 'advertiser.name'),
             location: $posting['location']['displayName']['text'] ?? null,
             // Search results carry no country; it's the one the search asked for.
             countryCode: self::COUNTRY_CODE,
@@ -354,35 +262,16 @@ class JobStreetAdapter implements Adapter
     }
 
     /**
-     * @param  array<string, mixed>  $data
-     */
-    private function required(array $data, string $key, ?string $path = null): string
-    {
-        $value = $data[$key] ?? null;
-
-        if (! is_string($value) || $value === '') {
-            throw new ShapeDriftException(Platform::JobStreet, 'Posting field '.($path ?? $key).' is missing.', 200);
-        }
-
-        return $value;
-    }
-
-    /**
      * @param  array<string, mixed>  $posting
      */
     private function postedDate(array $posting): CarbonImmutable
     {
         try {
-            return CarbonImmutable::parse($this->required($posting['listedAt'] ?? [], 'dateTimeUtc', 'listedAt.dateTimeUtc'));
+            return CarbonImmutable::parse($this->client->required($posting['listedAt'] ?? [], 'dateTimeUtc', 'listedAt.dateTimeUtc'));
         } catch (ShapeDriftException $e) {
             throw $e;
         } catch (Throwable $e) {
             throw new ShapeDriftException(Platform::JobStreet, 'Posting field listedAt.dateTimeUtc is not a date.', 200, $e);
         }
-    }
-
-    private function snippet(string $body): string
-    {
-        return mb_substr(trim(strip_tags($body)), 0, 200);
     }
 }

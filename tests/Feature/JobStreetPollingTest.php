@@ -12,7 +12,6 @@ use App\Enums\PostDateRange;
 use App\Enums\SalaryPeriod;
 use App\Enums\WorkArrangement;
 use App\Enums\WorkArrangementFilter;
-use App\Models\AdapterHealth;
 use App\Models\Application;
 use App\Models\Job;
 use App\Models\SearchProfile;
@@ -21,10 +20,13 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
+use Tests\Concerns\PollsAdapter;
 use Tests\TestCase;
 
 class JobStreetPollingTest extends TestCase
 {
+    use PollsAdapter;
+
     private const QA_ENGINEER_ID = '94675692';
 
     private const VIRTUAL_DESKTOP_ID = '94674962';
@@ -35,19 +37,9 @@ class JobStreetPollingTest extends TestCase
 
     private const HOURLY_ID = '94672549';
 
-    /** @var array<int, array<string, mixed>> */
-    private array $searchPages = [];
-
-    private int $searchCalls = 0;
-
-    protected function setUp(): void
+    protected function platform(): Platform
     {
-        parent::setUp();
-
-        Sleep::fake();
-
-        // The poll runs every Adapter; Glints finds nothing so only JobStreet Jobs are stored.
-        Http::fake(['glints.com/*' => Http::response(['data' => ['searchJobsV3' => ['hasMore' => false, 'jobsInPage' => []]]])]);
+        return Platform::JobStreet;
     }
 
     public function test_polling_normalizes_a_jobstreet_result_into_a_job(): void
@@ -236,13 +228,7 @@ class JobStreetPollingTest extends TestCase
 
     public function test_a_cloudflare_challenge_fails_the_run_as_anti_bot_blocked(): void
     {
-        Http::fake([
-            'id.jobstreet.com/*' => Http::response(
-                file_get_contents(base_path('tests/Fixtures/JobStreet/cloudflare-challenge.html')),
-                403,
-                ['Cf-Mitigated' => 'challenge', 'Content-Type' => 'text/html; charset=UTF-8'],
-            ),
-        ]);
+        Http::fake(['id.jobstreet.com/*' => $this->cloudflareChallenge($this->platform())]);
 
         $this->assertPollFails(FailureCategory::AntiBot);
     }
@@ -408,21 +394,6 @@ class JobStreetPollingTest extends TestCase
     }
 
     /**
-     * The run fails with the given category recorded against JobStreet, storing nothing.
-     */
-    private function assertPollFails(FailureCategory $category): void
-    {
-        SearchProfile::factory()->create(['keyword' => ['software engineer'], 'location' => null]);
-
-        $this->artisan('applyr:poll')->assertSuccessful();
-
-        $health = AdapterHealth::for(Platform::JobStreet);
-        $this->assertSame($category, $health->last_failure_category);
-        $this->assertSame(1, $health->failuresFor($category));
-        $this->assertSame(0, Job::count());
-    }
-
-    /**
      * The params of every jobSearchV7 request sent, in order.
      *
      * @return Collection<int, array<string, mixed>>
@@ -451,30 +422,13 @@ class JobStreetPollingTest extends TestCase
     /**
      * Serve JobStreet search from fixtures. Calling again swaps the responses for later polls.
      *
-     * @param  array<int, array<string, mixed>>  $searchPages  search responses served in order; the last repeats
+     * @param  list<array<string, mixed>>  $searchPages  search responses served in order; the last repeats
      */
     private function fakeJobStreet(?array $searchPages = null): void
     {
-        $alreadyFaked = $this->searchPages !== [];
-        $this->searchPages = $searchPages ?? [$this->fixture('search-jobs-page-1.json'), $this->fixture('search-jobs-no-results.json')];
-        $this->searchCalls = 0;
-
-        if ($alreadyFaked) {
-            return;
-        }
-
-        Http::fake([
-            'id.jobstreet.com/graphql' => fn (Request $request) => Http::response(
-                $this->searchPages[min($this->searchCalls++, count($this->searchPages) - 1)],
-            ),
-        ]);
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function fixture(string $name): array
-    {
-        return json_decode(file_get_contents(base_path("tests/Fixtures/JobStreet/{$name}")), true, flags: JSON_THROW_ON_ERROR);
+        $this->serveSearchPages(
+            'id.jobstreet.com/graphql',
+            $searchPages ?? [$this->fixture('search-jobs-page-1.json'), $this->fixture('search-jobs-no-results.json')],
+        );
     }
 }

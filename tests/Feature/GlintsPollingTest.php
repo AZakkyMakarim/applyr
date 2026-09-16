@@ -12,42 +12,33 @@ use App\Enums\PostDateRange;
 use App\Enums\SalaryPeriod;
 use App\Enums\WorkArrangement;
 use App\Enums\WorkArrangementFilter;
-use App\Models\AdapterHealth;
 use App\Models\Application;
 use App\Models\Job;
 use App\Models\SearchProfile;
+use Closure;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Concerns\PollsAdapter;
 use Tests\TestCase;
 
 class GlintsPollingTest extends TestCase
 {
+    use PollsAdapter;
+
     private const SOFTWARE_ENGINEER_ID = 'bc932c0b-3749-4e8c-8195-a11831888002';
 
     private const REMOTE_FULLSTACK_ID = '7eab7cb1-f34e-46ae-a81d-de2e55622b90';
 
     private const HYBRID_INTERNSHIP_ID = 'a0c1f274-6977-4957-810d-0b733589e298';
 
-    /** @var array<int, array<string, mixed>> */
-    private array $searchPages = [];
-
-    private int $searchCalls = 0;
-
     private string $locationResponse = 'search-locations.json';
 
-    protected function setUp(): void
+    protected function platform(): Platform
     {
-        parent::setUp();
-
-        Sleep::fake();
-
-        // The poll runs every Adapter; JobStreet finds nothing so only Glints Jobs are stored.
-        Http::fake(['id.jobstreet.com/*' => Http::response(
-            file_get_contents(base_path('tests/Fixtures/JobStreet/search-jobs-no-results.json')),
-        )]);
+        return Platform::Glints;
     }
 
     public function test_polling_normalizes_a_glints_result_into_a_job(): void
@@ -369,13 +360,7 @@ class GlintsPollingTest extends TestCase
 
     public function test_a_cloudflare_challenge_fails_the_run_as_anti_bot_blocked(): void
     {
-        Http::fake([
-            'glints.com/*' => Http::response(
-                file_get_contents(base_path('tests/Fixtures/Glints/cloudflare-challenge.html')),
-                403,
-                ['Cf-Mitigated' => 'challenge', 'Content-Type' => 'text/html; charset=UTF-8'],
-            ),
-        ]);
+        Http::fake(['glints.com/*' => $this->cloudflareChallenge($this->platform())]);
 
         $this->assertPollFails(FailureCategory::AntiBot);
     }
@@ -414,49 +399,20 @@ class GlintsPollingTest extends TestCase
     }
 
     /**
-     * The run fails with the given category recorded against Glints, storing nothing.
-     */
-    private function assertPollFails(FailureCategory $category): void
-    {
-        SearchProfile::factory()->create(['keyword' => ['software engineer'], 'location' => null]);
-
-        $this->artisan('applyr:poll')->assertSuccessful();
-
-        $health = AdapterHealth::for(Platform::Glints);
-        $this->assertSame($category, $health->last_failure_category);
-        $this->assertSame(1, $health->failuresFor($category));
-        $this->assertSame(0, Job::count());
-    }
-
-    /**
      * Serve Glints from fixtures. Calling again swaps the search responses for later polls.
      *
-     * @param  array<int, array<string, mixed>>  $searchPages  search responses served in order; the last repeats
+     * @param  list<array<string, mixed>>  $searchPages  search responses served in order; the last repeats
      */
     private function fakeGlints(?array $searchPages = null): void
     {
-        $alreadyFaked = $this->searchPages !== [];
-        $this->searchPages = $searchPages ?? [$this->fixture('search-jobs.json')];
-        $this->searchCalls = 0;
-
-        if ($alreadyFaked) {
-            return;
-        }
-
-        Http::fake([
-            'glints.com/api/v2/graphql' => fn (Request $request) => match ($request['operationName']) {
-                'searchJobs' => Http::response($this->searchPages[min($this->searchCalls++, count($this->searchPages) - 1)]),
+        $this->serveSearchPages(
+            'glints.com/api/v2/graphql',
+            $searchPages ?? [$this->fixture('search-jobs.json')],
+            fn (Request $request, Closure $nextSearchPage) => match ($request['operationName']) {
+                'searchJobs' => $nextSearchPage(),
                 'searchHierarchicalLocations' => Http::response($this->fixture($this->locationResponse)),
                 'getJobById' => Http::response($this->fixture("job-detail-{$request['variables']['id']}.json")),
             },
-        ]);
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function fixture(string $name): array
-    {
-        return json_decode(file_get_contents(base_path("tests/Fixtures/Glints/{$name}")), true, flags: JSON_THROW_ON_ERROR);
+        );
     }
 }

@@ -3,12 +3,10 @@
 namespace App\Adapters\Glints;
 
 use App\Adapters\Adapter;
-use App\Adapters\Exceptions\AntiBotBlockedException;
 use App\Adapters\Exceptions\ApiErrorException;
 use App\Adapters\Exceptions\ShapeDriftException;
-use App\Adapters\Exceptions\TransportException;
+use App\Adapters\GraphQlClient;
 use App\Adapters\JobData;
-use App\Adapters\RetriesTransportFailures;
 use App\Enums\JobStatus;
 use App\Enums\JobType;
 use App\Enums\JobTypeFilter;
@@ -18,10 +16,6 @@ use App\Enums\WorkArrangement;
 use App\Enums\WorkArrangementFilter;
 use App\Models\SearchProfile;
 use Carbon\CarbonImmutable;
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Http\Client\Response;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Sleep;
 use Throwable;
 
 /**
@@ -29,8 +23,6 @@ use Throwable;
  */
 class GlintsAdapter implements Adapter
 {
-    use RetriesTransportFailures;
-
     private const ENDPOINT = 'https://glints.com/api/v2/graphql';
 
     // Cloudflare challenges a bare User-Agent; a full desktop Chrome string passes.
@@ -83,7 +75,20 @@ class GlintsAdapter implements Adapter
         }
         GRAPHQL;
 
-    private bool $hasSentRequest = false;
+    private readonly GraphQlClient $client;
+
+    public function __construct()
+    {
+        $this->client = new GraphQlClient(
+            Platform::Glints,
+            self::ENDPOINT,
+            headers: ['User-Agent' => self::USER_AGENT, 'Accept' => 'application/json'],
+            options: ['curl' => [
+                CURLOPT_SSL_CIPHER_LIST => self::TLS_CIPHERS,
+                CURLOPT_SSL_EC_CURVES => self::TLS_CURVES,
+            ]],
+        );
+    }
 
     public function platform(): Platform
     {
@@ -120,7 +125,7 @@ class GlintsAdapter implements Adapter
 
     public function describe(JobData $jobData): string
     {
-        $data = $this->query('getJobById', self::JOB_DETAIL_QUERY, ['id' => $jobData->externalId]);
+        $data = $this->client->query('getJobById', self::JOB_DETAIL_QUERY, ['id' => $jobData->externalId]);
 
         // A posting removed since the search has no detail left to fetch.
         $descriptionJson = $data['getJobById']['descriptionJsonString'] ?? null;
@@ -181,7 +186,7 @@ class GlintsAdapter implements Adapter
         }
 
         try {
-            $data = $this->query('searchHierarchicalLocations', self::SEARCH_LOCATIONS_QUERY, [
+            $data = $this->client->query('searchHierarchicalLocations', self::SEARCH_LOCATIONS_QUERY, [
                 'searchTerm' => $location,
                 'countryCode' => $searchProfile->country_code,
                 'searchType' => 'SEARCH',
@@ -207,14 +212,14 @@ class GlintsAdapter implements Adapter
      */
     private function searchPage(array $data): ?array
     {
-        $body = $this->send('searchJobs', self::SEARCH_JOBS_QUERY, ['data' => $data]);
+        $body = $this->client->send('searchJobs', self::SEARCH_JOBS_QUERY, ['data' => $data]);
 
         // Pages past the first need a logged-in user; that's the end of what we can see.
         if ($data['page'] > 1 && ($body['errors'][0]['extensions']['code'] ?? null) === 'NO_PERMISSION') {
             return null;
         }
 
-        $results = $this->data($body)['searchJobsV3'] ?? null;
+        $results = $this->client->data($body)['searchJobsV3'] ?? null;
 
         if (! is_array($results) || ! is_array($results['jobsInPage'] ?? null)) {
             throw new ShapeDriftException(Platform::Glints, 'searchJobsV3.jobsInPage is missing.', 200);
@@ -224,120 +229,19 @@ class GlintsAdapter implements Adapter
     }
 
     /**
-     * @param  array<string, mixed>  $variables
-     * @return array<string, mixed>
-     */
-    private function query(string $operationName, string $query, array $variables): array
-    {
-        return $this->data($this->send($operationName, $query, $variables));
-    }
-
-    /**
-     * Send one GraphQL operation and return the decoded body, classifying transport and HTTP failures.
-     *
-     * @param  array<string, mixed>  $variables
-     * @return array<string, mixed>
-     */
-    private function send(string $operationName, string $query, array $variables): array
-    {
-        $this->pace();
-
-        try {
-            $response = $this->retryingTransportFailures(Http::withUserAgent(self::USER_AGENT))
-                ->acceptJson()
-                ->timeout(30)
-                ->withOptions(['curl' => [
-                    CURLOPT_SSL_CIPHER_LIST => self::TLS_CIPHERS,
-                    CURLOPT_SSL_EC_CURVES => self::TLS_CURVES,
-                ]])
-                ->post(self::ENDPOINT, [
-                    'operationName' => $operationName,
-                    'variables' => $variables,
-                    'query' => $query,
-                ]);
-        } catch (ConnectionException $e) {
-            throw new TransportException(Platform::Glints, $e->getMessage(), previous: $e);
-        }
-
-        $this->guardHttpFailure($response);
-
-        $body = $response->json();
-
-        if (! is_array($body)) {
-            throw new ShapeDriftException(Platform::Glints, 'Response body is not JSON: '.$this->snippet($response->body()), $response->status());
-        }
-
-        return $body;
-    }
-
-    /**
-     * The data object of a GraphQL body, or the API error it reports instead.
-     *
-     * @param  array<string, mixed>  $body
-     * @return array<string, mixed>
-     */
-    private function data(array $body): array
-    {
-        if (! empty($body['errors'])) {
-            $error = $body['errors'][0];
-            $code = $error['extensions']['code'] ?? 'UNKNOWN';
-
-            throw new ApiErrorException(Platform::Glints, "GraphQL error {$code}: ".($error['message'] ?? ''), 200);
-        }
-
-        if (! is_array($body['data'] ?? null)) {
-            throw new ShapeDriftException(Platform::Glints, 'Response has no data object.', 200);
-        }
-
-        return $body['data'];
-    }
-
-    private function guardHttpFailure(Response $response): void
-    {
-        if ($response->successful()) {
-            return;
-        }
-
-        $status = $response->status();
-        $message = "HTTP {$status}: ".$this->snippet($response->body());
-
-        if (($status === 403 && strtolower($response->header('Cf-Mitigated')) === 'challenge') || $status === 429) {
-            throw new AntiBotBlockedException(Platform::Glints, $message, $status);
-        }
-
-        if ($response->serverError()) {
-            throw new TransportException(Platform::Glints, $message, $status);
-        }
-
-        throw new ApiErrorException(Platform::Glints, $message, $status);
-    }
-
-    /**
-     * Space requests out so bursts don't raise Cloudflare's bot score.
-     */
-    private function pace(): void
-    {
-        if ($this->hasSentRequest) {
-            Sleep::for(config('applyr.adapters.request_delay_ms'))->milliseconds();
-        }
-
-        $this->hasSentRequest = true;
-    }
-
-    /**
      * @param  array<string, mixed>  $posting
      */
     private function toJobData(array $posting): JobData
     {
-        $externalId = $this->required($posting, 'id');
+        $externalId = $this->client->required($posting, 'id');
         $salary = $this->salary($posting);
 
         return new JobData(
             externalId: $externalId,
-            title: $this->required($posting, 'title'),
-            companyName: $this->required($posting['company'] ?? [], 'name', 'company.name'),
+            title: $this->client->required($posting, 'title'),
+            companyName: $this->client->required($posting['company'] ?? [], 'name', 'company.name'),
             location: $this->location($posting),
-            countryCode: $this->required($posting, 'CountryCode'),
+            countryCode: $this->client->required($posting, 'CountryCode'),
             url: ($posting['externalApplyURL'] ?? null) ?: "https://glints.com/id/opportunities/jobs/{$externalId}",
             workArrangement: $this->workArrangement($posting),
             jobType: match ($posting['type'] ?? null) {
@@ -365,26 +269,12 @@ class GlintsAdapter implements Adapter
     }
 
     /**
-     * @param  array<string, mixed>  $data
-     */
-    private function required(array $data, string $key, ?string $path = null): string
-    {
-        $value = $data[$key] ?? null;
-
-        if (! is_string($value) || $value === '') {
-            throw new ShapeDriftException(Platform::Glints, 'Posting field '.($path ?? $key).' is missing.', 200);
-        }
-
-        return $value;
-    }
-
-    /**
      * @param  array<string, mixed>  $posting
      */
     private function postedDate(array $posting): CarbonImmutable
     {
         try {
-            return CarbonImmutable::parse($this->required($posting, 'createdAt'));
+            return CarbonImmutable::parse($this->client->required($posting, 'createdAt'));
         } catch (ShapeDriftException $e) {
             throw $e;
         } catch (Throwable $e) {
@@ -510,10 +400,5 @@ class GlintsAdapter implements Adapter
         }
 
         return trim(preg_replace("/\n{3,}/", "\n\n", implode("\n", $lines)));
-    }
-
-    private function snippet(string $body): string
-    {
-        return mb_substr(trim(strip_tags($body)), 0, 200);
     }
 }

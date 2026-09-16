@@ -16,8 +16,6 @@ class AdapterHealthTest extends TestCase
 {
     private const TELEGRAM_URL = 'https://api.telegram.org/botbot-token/sendMessage';
 
-    private const EMPTY_GLINTS = ['data' => ['searchJobsV3' => ['hasMore' => false, 'jobsInPage' => []]]];
-
     /** @var list<mixed> */
     private array $glintsResponses = [];
 
@@ -33,7 +31,7 @@ class AdapterHealthTest extends TestCase
 
     public function test_a_cloudflare_challenge_is_recorded_as_anti_bot_without_failing_the_poll(): void
     {
-        $this->fakePlatforms(glints: $this->cloudflareChallenge());
+        $this->fakePlatforms(glints: $this->cloudflareChallenge(Platform::Glints));
 
         $this->artisan('applyr:poll')->assertSuccessful();
 
@@ -67,7 +65,7 @@ class AdapterHealthTest extends TestCase
 
     public function test_three_broken_runs_pause_the_adapter_and_send_exactly_one_alert(): void
     {
-        $this->fakePlatforms(glints: $this->cloudflareChallenge());
+        $this->fakePlatforms(glints: $this->cloudflareChallenge(Platform::Glints));
         $firstFailureAt = now();
 
         $this->artisan('applyr:poll')->assertSuccessful();
@@ -110,7 +108,7 @@ class AdapterHealthTest extends TestCase
     {
         $this->fakePlatforms(glints: fn () => array_shift($this->glintsResponses));
         $this->glintsResponses = [
-            $this->cloudflareChallenge(),
+            $this->cloudflareChallenge(Platform::Glints),
             Http::response(['errors' => [['message' => 'Bad input']]]),
             Http::response(['data' => ['searchJobsV3' => ['hasMore' => false]]]),
         ];
@@ -143,7 +141,7 @@ class AdapterHealthTest extends TestCase
     {
         $this->fakePlatforms(glints: Http::sequence()
             ->push('Bad Gateway', 502)
-            ->push(self::EMPTY_GLINTS));
+            ->pushResponse($this->noPostingsFound(Platform::Glints)));
 
         $this->artisan('applyr:poll')->assertSuccessful();
 
@@ -178,11 +176,11 @@ class AdapterHealthTest extends TestCase
     {
         $this->fakePlatforms(glints: fn () => array_shift($this->glintsResponses));
         $this->glintsResponses = [
-            $this->cloudflareChallenge(),
-            $this->cloudflareChallenge(),
-            Http::response(self::EMPTY_GLINTS),
-            $this->cloudflareChallenge(),
-            $this->cloudflareChallenge(),
+            $this->cloudflareChallenge(Platform::Glints),
+            $this->cloudflareChallenge(Platform::Glints),
+            $this->noPostingsFound(Platform::Glints),
+            $this->cloudflareChallenge(Platform::Glints),
+            $this->cloudflareChallenge(Platform::Glints),
         ];
 
         foreach ([1, 2, 3, 4, 5] as $run) {
@@ -197,7 +195,7 @@ class AdapterHealthTest extends TestCase
 
     public function test_one_paused_platform_does_not_stop_the_other_from_polling(): void
     {
-        $this->fakePlatforms(glints: $this->cloudflareChallenge());
+        $this->fakePlatforms(glints: $this->cloudflareChallenge(Platform::Glints));
 
         foreach ([1, 2, 3] as $run) {
             $this->artisan('applyr:poll')->assertSuccessful();
@@ -212,7 +210,7 @@ class AdapterHealthTest extends TestCase
 
     public function test_a_failed_alert_does_not_undo_the_pause(): void
     {
-        $this->fakePlatforms(glints: $this->cloudflareChallenge(), telegram: Http::response(['ok' => false], 500));
+        $this->fakePlatforms(glints: $this->cloudflareChallenge(Platform::Glints), telegram: Http::response(['ok' => false], 500));
 
         foreach ([1, 2, 3] as $run) {
             $this->artisan('applyr:poll')->assertSuccessful();
@@ -223,22 +221,14 @@ class AdapterHealthTest extends TestCase
 
     private function fakePlatforms(mixed $glints = null, mixed $jobStreet = null, mixed $telegram = null): void
     {
-        Http::fake([
+        Http::fake(array_filter([
             'api.telegram.org/*' => $telegram ?? Http::response(['ok' => true]),
-            'glints.com/*' => $glints ?? Http::response(self::EMPTY_GLINTS),
-            'id.jobstreet.com/*' => $jobStreet ?? Http::response(
-                file_get_contents(base_path('tests/Fixtures/JobStreet/search-jobs-no-results.json')),
-            ),
-        ]);
-    }
+            'glints.com/*' => $glints,
+            'id.jobstreet.com/*' => $jobStreet,
+        ]));
 
-    private function cloudflareChallenge(): mixed
-    {
-        return Http::response(
-            file_get_contents(base_path('tests/Fixtures/Glints/cloudflare-challenge.html')),
-            403,
-            ['Cf-Mitigated' => 'challenge', 'Content-Type' => 'text/html; charset=UTF-8'],
-        );
+        // Platforms given no response find nothing.
+        $this->fakeAdaptersFindingNothing();
     }
 
     /**
