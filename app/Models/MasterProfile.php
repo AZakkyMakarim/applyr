@@ -1,0 +1,77 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Table;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+
+/**
+ * The user's ground-truth personal info, links and skills. A single mutable row
+ * with no user_id and no versioning; it exists only once the user first saves it.
+ */
+#[Table('master_profile')]
+#[Fillable([
+    'full_name',
+    'email',
+    'phone',
+    'location',
+    'professional_summary',
+    'links',
+    'skills',
+    'photo_path',
+    'show_photo',
+])]
+class MasterProfile extends Model
+{
+    /**
+     * The profile photo lives on the private disk; the dashboard serves it through a route.
+     */
+    public const PHOTO_DISK = 'local';
+
+    public const PHOTO_DIRECTORY = 'master-profile';
+
+    protected $attributes = [
+        'links' => '[]',
+        'skills' => '[]',
+        'show_photo' => false,
+    ];
+
+    /**
+     * The MasterProfile row, or an unsaved blank one when nothing has been saved yet.
+     */
+    public static function current(): self
+    {
+        return static::query()->firstOrNew();
+    }
+
+    /**
+     * Store a newly uploaded photo, save, and only then delete the file it replaced.
+     * Whether the photo appears on CVs is show_photo's business, not the upload's.
+     */
+    public function replacePhoto(UploadedFile $photo): void
+    {
+        $replacedPhotoPath = $this->photo_path;
+
+        $this->photo_path = $photo->store(self::PHOTO_DIRECTORY, self::PHOTO_DISK);
+        $this->save();
+
+        if ($replacedPhotoPath !== null) {
+            Storage::disk(self::PHOTO_DISK)->delete($replacedPhotoPath);
+        }
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'links' => 'array',
+            'skills' => 'array',
+            'show_photo' => 'boolean',
+        ];
+    }
+}
