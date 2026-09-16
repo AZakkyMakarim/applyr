@@ -6,12 +6,14 @@ use App\Enums\ApplicationStatus;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * The user's tracked intent to apply to a Job. Exactly one per Job.
  */
 #[Fillable([
     'status',
+    'current_tailored_application_id',
     'applied_at',
     'rejected_at',
     'previous_status',
@@ -25,6 +27,24 @@ class Application extends Model
     public function job(): BelongsTo
     {
         return $this->belongsTo(Job::class);
+    }
+
+    /**
+     * The TailoredApplication shown for this Application; older ones may still exist.
+     *
+     * @return BelongsTo<TailoredApplication, $this>
+     */
+    public function currentTailoredApplication(): BelongsTo
+    {
+        return $this->belongsTo(TailoredApplication::class, 'current_tailored_application_id');
+    }
+
+    /**
+     * @return HasMany<TailoredApplication, $this>
+     */
+    public function tailoredApplications(): HasMany
+    {
+        return $this->hasMany(TailoredApplication::class);
     }
 
     /**

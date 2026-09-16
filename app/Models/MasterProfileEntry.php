@@ -16,6 +16,34 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 abstract class MasterProfileEntry extends Model
 {
     /**
+     * The entry_id tailoring uses, in the prompt and in the snapshot alike. Row ids repeat across
+     * the three entry tables, so it is prefixed with the entry's kind, e.g. "experience:12".
+     */
+    public function tailoringEntryId(): string
+    {
+        return $this->tailoringKind().":{$this->getKey()}";
+    }
+
+    /**
+     * The entry_id prefix naming this kind of entry, e.g. "experience".
+     */
+    abstract protected function tailoringKind(): string;
+
+    /**
+     * The fields tailoring copies as-is and the AI may only read.
+     *
+     * @return array<string, mixed>
+     */
+    abstract public function tailoringFacts(): array;
+
+    /**
+     * The free-text fields the AI may reframe, as stored in the MasterProfile.
+     *
+     * @return array{description: ?string, achievements?: list<string>}
+     */
+    abstract public function reframeableText(): array;
+
+    /**
      * @return BelongsTo<MasterProfile, $this>
      */
     public function masterProfile(): BelongsTo

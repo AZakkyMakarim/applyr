@@ -75,7 +75,9 @@ class PollAdapter implements ShouldBeUnique, ShouldQueue
                     'description' => $description,
                 ]);
 
-                $job->application()->create(['status' => ApplicationStatus::PendingTailoring]);
+                $application = $job->application()->create(['status' => ApplicationStatus::PendingTailoring]);
+
+                TailorApplication::dispatch($application)->afterCommit();
             } else {
                 $job->update($jobData->jobAttributes());
             }
