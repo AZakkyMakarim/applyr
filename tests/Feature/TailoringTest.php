@@ -289,7 +289,8 @@ class TailoringTest extends TestCase
         $message = $messages->first(fn (string $text) => str_contains($text, 'PT. BEONE OPTIMA SOLUSI'));
         $this->assertStringContainsString('software engineer', $message);
         $this->assertStringContainsString('Glints', $message);
-        $this->assertStringContainsString(route('dashboard'), $message);
+        $application = Job::where('company_name', 'PT. BEONE OPTIMA SOLUSI')->sole()->application;
+        $this->assertStringContainsString(route('applications.show', $application), $message);
     }
 
     public function test_tailoring_exits_without_calling_gemini_once_the_application_has_left_pending_tailoring(): void

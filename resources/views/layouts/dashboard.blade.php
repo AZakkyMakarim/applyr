@@ -16,7 +16,7 @@
                 <a href="{{ route('dashboard') }}" class="text-lg font-semibold">{{ config('app.name', 'Applyr') }}</a>
 
                 <nav class="flex gap-6 text-sm font-medium text-gray-600">
-                    <a href="#" class="hover:text-gray-900">Applications</a>
+                    <a href="{{ route('applications.index') }}" class="hover:text-gray-900">Applications</a>
                     <a href="{{ route('search-profiles.index') }}" class="hover:text-gray-900">SearchProfiles</a>
                     <a href="{{ route('master-profile.edit') }}" class="hover:text-gray-900">MasterProfile</a>
                     <a href="#" class="hover:text-gray-900">Adapters</a>

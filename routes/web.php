@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ApplicationController;
 use App\Http\Controllers\EducationController;
 use App\Http\Controllers\ExperienceController;
 use App\Http\Controllers\MasterProfileController;
@@ -8,6 +9,10 @@ use App\Http\Controllers\SearchProfileController;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'dashboard')->name('dashboard');
+
+Route::resource('applications', ApplicationController::class)->only(['index', 'show']);
+Route::get('applications/{application}/cv', [ApplicationController::class, 'cv'])->name('applications.cv');
+Route::get('applications/{application}/cover-letter', [ApplicationController::class, 'coverLetter'])->name('applications.cover-letter');
 
 Route::resource('search-profiles', SearchProfileController::class)->except('show');
 Route::patch('search-profiles/{search_profile}/pause', [SearchProfileController::class, 'pause'])->name('search-profiles.pause');

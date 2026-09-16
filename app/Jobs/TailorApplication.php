@@ -81,7 +81,7 @@ class TailorApplication implements ShouldQueue
             $job->title,
             "{$job->company_name} · {$job->platform->label()}",
             '',
-            route('dashboard'),
+            route('applications.show', $application),
         ])));
     }
 }

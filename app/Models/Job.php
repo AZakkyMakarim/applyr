@@ -58,6 +58,28 @@ class Job extends Model
     }
 
     /**
+     * The salary as shown to the user, e.g. "IDR 10,000,000 – 15,000,000 / month"; null when not advertised.
+     */
+    public function salaryRange(): ?string
+    {
+        $amounts = array_filter([$this->salary_min, $this->salary_max], fn ($amount) => $amount !== null);
+
+        if ($amounts === []) {
+            return null;
+        }
+
+        $range = implode(' – ', array_unique(array_map(fn ($amount) => number_format((float) $amount), $amounts)));
+
+        $period = match ($this->salary_period) {
+            SalaryPeriod::Monthly => ' / month',
+            SalaryPeriod::Yearly => ' / year',
+            default => '',
+        };
+
+        return trim("{$this->salary_currency} {$range}").$period;
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array
