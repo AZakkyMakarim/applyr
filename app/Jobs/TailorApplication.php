@@ -58,11 +58,13 @@ class TailorApplication implements ShouldQueue
             return;
         }
 
-        // Nothing to tailor from until the user has saved a MasterProfile.
+        // Nothing to tailor from until the user has saved a MasterProfile. Failing leaves the Application
+        // on the dashboard to Retry once one is saved, rather than stuck in pending_tailoring.
         $masterProfile = MasterProfile::query()->with(['experiences', 'educations', 'projects'])->first();
 
         if ($masterProfile === null) {
             Log::warning("Application {$application->id} was not tailored: no MasterProfile has been saved.");
+            $application->transitionTo(ApplicationStatus::TailoringFailed);
 
             return;
         }

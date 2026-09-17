@@ -322,6 +322,22 @@ class TailoringTest extends TestCase
         $this->assertSame([], $this->pdfRenderer->rendered);
     }
 
+    public function test_tailoring_without_a_saved_master_profile_fails_so_it_can_be_retried(): void
+    {
+        Http::fake();
+        $this->masterProfile->delete();
+        $application = $this->applicationFor('no-master-profile');
+
+        $this->runTailoring($application)->assertNotReleased();
+
+        Http::assertNothingSent();
+        $application->refresh();
+        $this->assertSame(ApplicationStatus::TailoringFailed, $application->status);
+        $this->assertTrue(ApplicationAction::Retry->isAvailableFor($application));
+        $this->assertSame(0, TailoredApplication::count());
+        $this->assertSame([], $this->pdfRenderer->rendered);
+    }
+
     public function test_rejecting_a_pending_application_before_its_tailoring_runs_prevents_any_gemini_call(): void
     {
         Http::fake();

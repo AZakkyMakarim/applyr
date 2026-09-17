@@ -4,6 +4,7 @@ namespace Tests\Concerns;
 
 use App\Enums\FailureCategory;
 use App\Enums\Platform;
+use App\Jobs\TailorApplication;
 use App\Models\AdapterHealth;
 use App\Models\Job;
 use App\Models\SearchProfile;
@@ -11,6 +12,7 @@ use Closure;
 use GuzzleHttp\Promise\PromiseInterface;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Sleep;
 
 /**
@@ -31,6 +33,9 @@ trait PollsAdapter
     protected function setUpPollsAdapter(): void
     {
         Sleep::fake();
+
+        // Polling is under test, not tailoring: new Applications stay in pending_tailoring.
+        Queue::fake([TailorApplication::class]);
 
         // The poll runs every Adapter; the others find nothing so only this platform's Jobs are stored.
         $this->fakeAdaptersFindingNothing(except: $this->platform());
