@@ -15,6 +15,7 @@ use App\Enums\Platform;
 use App\Enums\SalaryPeriod;
 use App\Enums\WorkArrangement;
 use App\Enums\WorkArrangementFilter;
+use App\Models\Job;
 use App\Models\SearchProfile;
 use Carbon\CarbonImmutable;
 use Throwable;
@@ -141,9 +142,9 @@ class GlintsAdapter implements Adapter, RefreshesJobs
         return $this->flattenDescription($descriptionJson);
     }
 
-    public function refresh(string $externalId): ?JobData
+    public function refresh(Job $job): ?JobData
     {
-        $body = $this->fetchJob('refreshJob', self::REFRESH_JOB_QUERY, $externalId);
+        $body = $this->fetchJob('refreshJob', self::REFRESH_JOB_QUERY, $job->external_id);
 
         if ($body === null) {
             return null;

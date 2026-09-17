@@ -12,9 +12,11 @@ use App\Enums\PostDateRange;
 use App\Enums\SalaryPeriod;
 use App\Enums\WorkArrangement;
 use App\Enums\WorkArrangementFilter;
+use App\Models\AdapterHealth;
 use App\Models\Application;
 use App\Models\Job;
 use App\Models\SearchProfile;
+use Closure;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
@@ -36,6 +38,9 @@ class JobStreetPollingTest extends TestCase
     private const NO_ORGANISATION_ID = '94667969';
 
     private const HOURLY_ID = '94672549';
+
+    /** @var array<string, array<string, mixed>> jobDetails bodies JobStreet serves when a posting is fetched by id to refresh it */
+    private array $jobDetails = [];
 
     protected function platform(): Platform
     {
@@ -64,7 +69,8 @@ class JobStreetPollingTest extends TestCase
         $this->assertSame('contract', $job->job_type->value);
         $this->assertNull($job->min_years_experience);
         $this->assertNull($job->max_years_experience);
-        $this->assertSame('unknown', $job->status->value);
+        // JobStreet search serves only active postings.
+        $this->assertSame('open', $job->status->value);
         $this->assertEquals(8000000, $job->salary_min);
         $this->assertEquals(12000000, $job->salary_max);
         $this->assertSame('IDR', $job->salary_currency);
@@ -212,6 +218,95 @@ class JobStreetPollingTest extends TestCase
         $job = Job::where('external_id', self::QA_ENGINEER_ID)->sole();
         $this->assertSame('Senior Quality Assurance Engineer', $job->title);
         $this->assertSame([$searchProfile->id], $job->searchProfiles->modelKeys());
+    }
+
+    public function test_an_open_job_search_stops_returning_is_refreshed_by_id(): void
+    {
+        $this->travelTo('2026-09-17 08:00:00');
+        SearchProfile::factory()->create(['keyword' => ['software engineer'], 'location' => null]);
+        $this->fakeJobStreet();
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        // Search only serves active postings, so once one expires it just drops out of the results.
+        $page = $this->fixture('search-jobs-page-1.json');
+        array_shift($page['data']['jobSearchV7']['results']['jobs']);
+        $this->jobDetails[self::QA_ENGINEER_ID] = $this->jobDetailsFixture('job-details-expired-93958176.json', self::QA_ENGINEER_ID);
+        $this->fakeJobStreet([$page, $this->fixture('search-jobs-no-results.json')]);
+
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        $job = Job::where('external_id', self::QA_ENGINEER_ID)->sole();
+        $this->assertSame(JobStatus::Expired, $job->status);
+        // jobDetails carries no structured salary or work arrangement, so the searched posting still supplies them.
+        $this->assertEquals(8000000, $job->salary_min);
+        $this->assertSame(WorkArrangement::Onsite, $job->work_arrangement);
+        $this->assertSame($this->fixture('search-jobs-page-1.json')['data']['jobSearchV7']['results']['jobs'][0], $job->raw_payload);
+        $this->assertSame(ApplicationStatus::PendingTailoring, $job->application->status);
+        $this->assertNull(AdapterHealth::for(Platform::JobStreet)->last_failure_category);
+
+        // Postings the search still returned were refreshed by it and aren't fetched again.
+        $refreshes = Http::recorded(fn (Request $request) => $request['operationName'] === 'jobDetails');
+        $this->assertSame([self::QA_ENGINEER_ID], $refreshes->map(fn (array $pair) => $pair[0]['variables']['id'])->values()->all());
+        $this->assertTrue($refreshes->every(fn (array $pair) => $this->hasBrowserHeaders($pair[0])));
+    }
+
+    public function test_a_job_jobstreet_marks_expired_before_its_expiry_date_is_closed(): void
+    {
+        $this->travelTo('2026-09-17 08:00:00');
+        SearchProfile::factory()->create(['keyword' => ['software engineer'], 'location' => null]);
+        $this->fakeJobStreet();
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        // An advertiser withdrawing the ad expires it at once, leaving its expiry date in the future.
+        $this->jobDetails[self::QA_ENGINEER_ID] = $this->jobDetailsFixture('job-details-withdrawn-94447959.json', self::QA_ENGINEER_ID);
+        $this->jobDetails[self::VIRTUAL_DESKTOP_ID] = $this->jobDetailsFixture('job-details-not-found.json');
+        $this->jobDetails[self::REMOTE_ID] = $this->jobDetailsFixture('job-details-active-94675692.json', self::REMOTE_ID);
+        $this->fakeJobStreet([$this->fixture('search-jobs-no-results.json')]);
+
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        $this->assertSame(JobStatus::Closed, Job::where('external_id', self::QA_ENGINEER_ID)->sole()->status);
+        // A posting JobStreet no longer has can't be applied to any more.
+        $this->assertSame(JobStatus::Closed, Job::where('external_id', self::VIRTUAL_DESKTOP_ID)->sole()->status);
+        $this->assertSame(JobStatus::Open, Job::where('external_id', self::REMOTE_ID)->sole()->status);
+        $this->assertNull(AdapterHealth::for(Platform::JobStreet)->last_failure_category);
+    }
+
+    public function test_a_refresh_answer_with_an_unrecognised_status_is_skipped(): void
+    {
+        SearchProfile::factory()->create(['keyword' => ['software engineer'], 'location' => null]);
+        $this->fakeJobStreet();
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        $page = $this->fixture('search-jobs-page-1.json');
+        array_shift($page['data']['jobSearchV7']['results']['jobs']);
+        $details = $this->jobDetailsFixture('job-details-active-94675692.json');
+        $details['data']['jobDetails']['job']['status'] = 'Suspended';
+        $this->jobDetails[self::QA_ENGINEER_ID] = $details;
+        $this->fakeJobStreet([$page, $this->fixture('search-jobs-no-results.json')]);
+
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        // Stored unknown, it would never be refreshed again; left open, a later poll retries it.
+        $this->assertNull(AdapterHealth::for(Platform::JobStreet)->last_failure_category);
+        $this->assertSame(JobStatus::Open, Job::where('external_id', self::QA_ENGINEER_ID)->sole()->status);
+    }
+
+    public function test_a_refresh_answer_missing_its_status_is_skipped(): void
+    {
+        SearchProfile::factory()->create(['keyword' => ['software engineer'], 'location' => null]);
+        $this->fakeJobStreet();
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        $page = $this->fixture('search-jobs-page-1.json');
+        array_shift($page['data']['jobSearchV7']['results']['jobs']);
+        $this->jobDetails[self::QA_ENGINEER_ID] = ['data' => ['jobDetails' => ['job' => ['id' => self::QA_ENGINEER_ID]]]];
+        $this->fakeJobStreet([$page, $this->fixture('search-jobs-no-results.json')]);
+
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        $this->assertNull(AdapterHealth::for(Platform::JobStreet)->last_failure_category);
+        $this->assertSame(JobStatus::Open, Job::where('external_id', self::QA_ENGINEER_ID)->sole()->status);
     }
 
     public function test_requests_to_jobstreet_are_paced(): void
@@ -420,6 +515,22 @@ class JobStreetPollingTest extends TestCase
     }
 
     /**
+     * A jobDetails fixture, re-keyed to the given posting id.
+     *
+     * @return array<string, mixed>
+     */
+    private function jobDetailsFixture(string $name, ?string $externalId = null): array
+    {
+        $body = $this->fixture($name);
+
+        if ($externalId !== null) {
+            $body['data']['jobDetails']['job']['id'] = $externalId;
+        }
+
+        return $body;
+    }
+
+    /**
      * Serve JobStreet search from fixtures. Calling again swaps the responses for later polls.
      *
      * @param  list<array<string, mixed>>  $searchPages  search responses served in order; the last repeats
@@ -429,6 +540,10 @@ class JobStreetPollingTest extends TestCase
         $this->serveSearchPages(
             'id.jobstreet.com/graphql',
             $searchPages ?? [$this->fixture('search-jobs-page-1.json'), $this->fixture('search-jobs-no-results.json')],
+            fn (Request $request, Closure $nextSearchPage) => match ($request['operationName']) {
+                'JobSearchV7' => $nextSearchPage(),
+                'jobDetails' => Http::response($this->jobDetails[$request['variables']['id']]),
+            },
         );
     }
 }

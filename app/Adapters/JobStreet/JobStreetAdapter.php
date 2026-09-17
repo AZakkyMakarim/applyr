@@ -6,12 +6,14 @@ use App\Adapters\Adapter;
 use App\Adapters\Exceptions\ShapeDriftException;
 use App\Adapters\GraphQlClient;
 use App\Adapters\JobData;
+use App\Adapters\RefreshesJobs;
 use App\Enums\JobStatus;
 use App\Enums\JobType;
 use App\Enums\Platform;
 use App\Enums\PostDateRange;
 use App\Enums\SalaryPeriod;
 use App\Enums\WorkArrangement;
+use App\Models\Job;
 use App\Models\SearchProfile;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Str;
@@ -20,7 +22,7 @@ use Throwable;
 /**
  * JobStreet job search through SEEK's candidate GraphQL API (id.jobstreet.com/graphql).
  */
-class JobStreetAdapter implements Adapter
+class JobStreetAdapter implements Adapter, RefreshesJobs
 {
     // jobstreet.co.id only redirects here.
     private const ENDPOINT = 'https://id.jobstreet.com/graphql';
@@ -72,6 +74,14 @@ class JobStreetAdapter implements Adapter
               }
               pagination { page pageSize resultCount }
             }
+          }
+        }
+        GRAPHQL;
+
+    private const JOB_DETAILS_QUERY = <<<'GRAPHQL'
+        query jobDetails($id: ID!) {
+          jobDetails(id: $id) {
+            job { id status expiresAt { dateTimeUtc } }
           }
         }
         GRAPHQL;
@@ -132,6 +142,26 @@ class JobStreetAdapter implements Adapter
     public function describe(JobData $jobData): string
     {
         return (string) ($jobData->rawPayload['abstract'] ?? '');
+    }
+
+    /**
+     * jobDetails carries a posting's status but no structured salary or work arrangement, so every
+     * other field still comes from the posting as search last returned it.
+     */
+    public function refresh(Job $job): ?JobData
+    {
+        $details = $this->client->query('jobDetails', self::JOB_DETAILS_QUERY, ['id' => $job->external_id]);
+
+        if (! array_key_exists('jobDetails', $details)) {
+            throw new ShapeDriftException(Platform::JobStreet, 'jobDetails is missing.', 200);
+        }
+
+        // JobStreet answers a posting it no longer has with null.
+        if ($details['jobDetails'] === null) {
+            return null;
+        }
+
+        return $this->toJobData($job->raw_payload, $this->status($details['jobDetails']['job'] ?? []));
     }
 
     /**
@@ -213,9 +243,9 @@ class JobStreetAdapter implements Adapter
     }
 
     /**
-     * @param  array<string, mixed>  $posting
+     * @param  array<string, mixed>  $posting  a search result
      */
-    private function toJobData(array $posting): JobData
+    private function toJobData(array $posting, JobStatus $status = JobStatus::Open): JobData
     {
         $externalId = $this->client->required($posting, 'id');
         $salary = $posting['salary'] ?? null;
@@ -236,8 +266,8 @@ class JobStreetAdapter implements Adapter
             // JobStreet states no experience bounds.
             minYearsExperience: null,
             maxYearsExperience: null,
-            // Search results expose no expiry, and a listing being searchable doesn't prove it's open.
-            status: JobStatus::Unknown,
+            // Search results carry no status, but search serves only active postings.
+            status: $status,
             salaryMin: $salary['min'] ?? null,
             salaryMax: $salary['max'] ?? null,
             salaryCurrency: $salary['currency'] ?? null,
@@ -247,9 +277,25 @@ class JobStreetAdapter implements Adapter
                 'hourly' => SalaryPeriod::Hourly,
                 default => SalaryPeriod::Unspecified,
             },
-            postedDate: $this->postedDate($posting),
+            postedDate: $this->dateTimeUtc($posting, 'listedAt'),
             rawPayload: $posting,
         );
+    }
+
+    /**
+     * JobStreet's job status is Active or Expired. An advertiser withdrawing an ad expires it at once,
+     * leaving its expiry date in the future, so only an ad past that date expired on its own.
+     *
+     * @param  array<string, mixed>  $details  a jobDetails job
+     */
+    private function status(array $details): JobStatus
+    {
+        return match ($status = $this->client->required($details, 'status')) {
+            'Active' => JobStatus::Open,
+            'Expired' => $this->dateTimeUtc($details, 'expiresAt')->isFuture() ? JobStatus::Closed : JobStatus::Expired,
+            // Unknown would never be refreshed again, so skip the Job until the value is understood.
+            default => throw new ShapeDriftException(Platform::JobStreet, "Unrecognised job status {$status}.", 200),
+        };
     }
 
     /**
@@ -263,16 +309,18 @@ class JobStreetAdapter implements Adapter
     }
 
     /**
-     * @param  array<string, mixed>  $posting
+     * A SEEK date field, such as listedAt, as its UTC instant.
+     *
+     * @param  array<string, mixed>  $data
      */
-    private function postedDate(array $posting): CarbonImmutable
+    private function dateTimeUtc(array $data, string $field): CarbonImmutable
     {
         try {
-            return CarbonImmutable::parse($this->client->required($posting['listedAt'] ?? [], 'dateTimeUtc', 'listedAt.dateTimeUtc'));
+            return CarbonImmutable::parse($this->client->required($data[$field] ?? [], 'dateTimeUtc', "{$field}.dateTimeUtc"));
         } catch (ShapeDriftException $e) {
             throw $e;
         } catch (Throwable $e) {
-            throw new ShapeDriftException(Platform::JobStreet, 'Posting field listedAt.dateTimeUtc is not a date.', 200, $e);
+            throw new ShapeDriftException(Platform::JobStreet, "Posting field {$field}.dateTimeUtc is not a date.", 200, $e);
         }
     }
 }

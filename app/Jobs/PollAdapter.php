@@ -87,7 +87,7 @@ class PollAdapter implements ShouldBeUnique, ShouldQueue
 
         foreach ($unseenOpenJobs as $job) {
             try {
-                $jobData = $adapter->refresh($job->external_id);
+                $jobData = $adapter->refresh($job);
             } catch (ApiErrorException|ShapeDriftException $e) {
                 // One posting's bad answer mustn't fail the run, which would pause search too.
                 // Blocks and transport failures still do: further requests won't fare better.

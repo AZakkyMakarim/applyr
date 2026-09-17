@@ -1,0 +1,14 @@
+{
+  "data": {
+    "jobDetails": {
+      "job": {
+        "id": "93958176",
+        "status": "Expired",
+        "isExpired": true,
+        "expiresAt": {
+          "dateTimeUtc": "2026-09-12T13:59:59.999Z"
+        }
+      }
+    }
+  }
+}
