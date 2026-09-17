@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Ai\AiProvider;
+use App\Ai\Exceptions\MalformedResponseException;
 use App\Ai\Exceptions\ProviderException;
 use App\Ai\Exceptions\RateLimitedException;
 use App\Enums\ApplicationAction;
@@ -484,6 +485,51 @@ class TailoringTest extends TestCase
         Http::assertNotSent(fn (Request $request) => $request->url() === self::TELEGRAM_URL);
     }
 
+    public function test_unreadable_content_is_discarded_and_a_fresh_one_generated(): void
+    {
+        $application = $this->applicationFor('unreadable-then-valid');
+        $this->fakeGeminiSequence('not json', '"a string"', $this->validContent());
+
+        TailorApplication::dispatch($application);
+
+        $this->assertCount(3, $this->geminiRequests());
+        $application->refresh();
+        $this->assertSame(ApplicationStatus::NeedsReview, $application->status);
+        $this->assertSame('Valid summary.', $application->currentTailoredApplication->cv_data['personal_info']['professional_summary']);
+    }
+
+    public function test_tailoring_fails_once_every_attempt_is_unreadable_or_invalid(): void
+    {
+        $application = $this->applicationFor('always-unreadable');
+        $invalid = $this->validContent();
+        $invalid['professional_summary'] = '';
+        $this->fakeGeminiSequence('not json', $invalid, 'still not json', $this->validContent());
+
+        TailorApplication::dispatch($application);
+
+        $this->assertCount(3, $this->geminiRequests());
+        $application->refresh();
+        $this->assertSame(ApplicationStatus::TailoringFailed, $application->status);
+        $this->assertSame(0, TailoredApplication::count());
+        $this->assertSame([], $this->pdfRenderer->rendered);
+    }
+
+    public function test_a_gemini_error_fails_tailoring_without_regenerating(): void
+    {
+        $application = $this->applicationFor('gemini-error');
+        $this->fakeGeminiSequence(500, $this->validContent());
+
+        try {
+            $this->runTailoring($application);
+            $this->fail('A Gemini HTTP error should fail the job.');
+        } catch (ProviderException $e) {
+            $this->assertNotInstanceOf(MalformedResponseException::class, $e);
+        }
+
+        $this->assertCount(1, $this->geminiRequests());
+        $this->assertSame(ApplicationStatus::PendingTailoring, $application->fresh()->status);
+    }
+
     public function test_the_number_of_attempts_comes_from_the_regeneration_limit(): void
     {
         config(['applyr.tailoring.regeneration_limit' => 2]);
@@ -730,6 +776,22 @@ class TailoringTest extends TestCase
         $this->runTailoring($second)->assertReleased(delay: 60);
     }
 
+    public function test_an_unreadable_answer_resets_the_429_backoff(): void
+    {
+        config(['applyr.tailoring.regeneration_limit' => 1]);
+        $first = $this->applicationFor('first');
+        $second = $this->applicationFor('second');
+        $this->fakeGeminiSequence(429, 429, 'not json', 429);
+
+        $this->runTailoring($first)->assertReleased(delay: 60);
+        $this->travel(60)->seconds();
+        $this->runTailoring($first)->assertReleased(delay: 120);
+        $this->travel(120)->seconds();
+        $this->runTailoring($first)->assertNotReleased();
+
+        $this->runTailoring($second)->assertReleased(delay: 60);
+    }
+
     public function test_the_429_backoff_starts_over_once_a_quiet_cooldown_has_passed(): void
     {
         $application = $this->applicationFor('rate-limited-again-later');
@@ -780,16 +842,29 @@ class TailoringTest extends TestCase
 
     public function test_gemini_reports_other_failures_as_provider_errors(): void
     {
+        Http::fake(['generativelanguage.googleapis.com/*' => Http::response(['error' => ['code' => 500]], 500)]);
+
+        try {
+            app(AiProvider::class)->generate('prompt', ['type' => 'OBJECT']);
+            $this->fail('An HTTP error should have thrown.');
+        } catch (ProviderException $e) {
+            $this->assertNotInstanceOf(MalformedResponseException::class, $e);
+        }
+    }
+
+    public function test_gemini_reports_unreadable_content_as_malformed(): void
+    {
         Http::fake(['generativelanguage.googleapis.com/*' => Http::sequence()
-            ->push(['error' => ['code' => 500]], 500)
-            ->push(['candidates' => [['content' => ['parts' => [['text' => 'not json']]]]]]),
+            ->push($this->geminiEnvelope('not json'))
+            ->push($this->geminiEnvelope('42'))
+            ->push(['candidates' => [['finishReason' => 'SAFETY']]]),
         ]);
 
-        foreach ([1, 2] as $attempt) {
+        foreach (['not JSON', 'not an object', 'no content'] as $case) {
             try {
                 app(AiProvider::class)->generate('prompt', ['type' => 'OBJECT']);
-                $this->fail("Attempt {$attempt} should have thrown.");
-            } catch (ProviderException) {
+                $this->fail("Content that is {$case} should have thrown.");
+            } catch (MalformedResponseException) {
                 $this->addToAssertionCount(1);
             }
         }
@@ -883,18 +958,21 @@ class TailoringTest extends TestCase
     }
 
     /**
-     * Gemini answers successive calls with each content in turn; a status code answers with that HTTP error.
+     * Gemini answers successive calls with each content in turn; a status code answers with that HTTP error,
+     * and a string is answered as the raw response text.
      *
-     * @param  array<string, mixed>|int  ...$contents
+     * @param  array<string, mixed>|int|string  ...$contents
      */
-    private function fakeGeminiSequence(array|int ...$contents): void
+    private function fakeGeminiSequence(array|int|string ...$contents): void
     {
         $sequence = Http::sequence();
 
         foreach ($contents as $content) {
-            is_int($content)
-                ? $sequence->push(['error' => ['code' => $content]], $content)
-                : $sequence->push($this->geminiEnvelope($content));
+            match (true) {
+                is_int($content) => $sequence->push(['error' => ['code' => $content]], $content),
+                is_string($content) => $sequence->push($this->geminiEnvelope($content)),
+                default => $sequence->push($this->geminiEnvelope($content)),
+            };
         }
 
         Http::fake([
@@ -904,14 +982,16 @@ class TailoringTest extends TestCase
     }
 
     /**
-     * A Gemini generateContent response whose text is the given content as JSON.
+     * A Gemini generateContent response whose text is the given content as JSON, or the given raw text.
      *
-     * @param  array<string, mixed>  $content
+     * @param  array<string, mixed>|string  $content
      * @return array<string, mixed>
      */
-    private function geminiEnvelope(array $content): array
+    private function geminiEnvelope(array|string $content): array
     {
-        return ['candidates' => [['content' => ['role' => 'model', 'parts' => [['text' => json_encode($content)]]]]]];
+        $text = is_string($content) ? $content : json_encode($content);
+
+        return ['candidates' => [['content' => ['role' => 'model', 'parts' => [['text' => $text]]]]]];
     }
 
     /**

@@ -2,6 +2,7 @@
 
 namespace App\Ai;
 
+use App\Ai\Exceptions\MalformedResponseException;
 use App\Ai\Exceptions\ProviderException;
 use App\Ai\Exceptions\RateLimitedException;
 use Illuminate\Http\Client\ConnectionException;
@@ -49,17 +50,17 @@ class GeminiProvider implements AiProvider
         $text = $response->json('candidates.0.content.parts.0.text');
 
         if (! is_string($text)) {
-            throw new ProviderException('Gemini returned no content: '.str($response->body())->limit(300));
+            throw new MalformedResponseException('Gemini returned no content: '.str($response->body())->limit(300));
         }
 
         try {
             $data = json_decode($text, true, flags: JSON_THROW_ON_ERROR);
         } catch (JsonException $e) {
-            throw new ProviderException("Gemini returned content that isn't JSON: {$e->getMessage()}", previous: $e);
+            throw new MalformedResponseException("Gemini returned content that isn't JSON: {$e->getMessage()}", previous: $e);
         }
 
         if (! is_array($data)) {
-            throw new ProviderException('Gemini returned JSON that is not an object.');
+            throw new MalformedResponseException('Gemini returned JSON that is not an object.');
         }
 
         return $data;

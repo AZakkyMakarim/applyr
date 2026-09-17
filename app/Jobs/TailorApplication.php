@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Ai\AiProvider;
 use App\Ai\AiThrottle;
+use App\Ai\Exceptions\MalformedResponseException;
 use App\Ai\Exceptions\RateLimitedException;
 use App\Enums\ApplicationStatus;
 use App\Models\Application;
@@ -23,8 +24,8 @@ use Illuminate\Support\Str;
 
 /**
  * Generates an Application's TailoredApplication with the AI provider, renders both PDFs,
- * and hands the Application to the user for review. An AI response that fails fact validation is
- * regenerated, and never rendered or stored.
+ * and hands the Application to the user for review. An AI response that can't be decoded or fails fact
+ * validation is regenerated, and never rendered or stored. A failed AI call fails the job.
  *
  * AI calls are throttled: tailoring that finds the rate limit spent, or that meets a 429, is released
  * back to the queue to run again later, and a release never counts as a failed validation attempt.
@@ -88,7 +89,7 @@ class TailorApplication implements ShouldQueue
             return;
         }
 
-        // Every attempt failed validation; the user sees it on the dashboard, with no Telegram message.
+        // Every attempt was unreadable or failed validation; the user sees it on the dashboard, with no Telegram message.
         // A reject saved while tailoring ran stands.
         if ($aiResponse === null) {
             $application->transitionTo(ApplicationStatus::TailoringFailed);
@@ -141,8 +142,8 @@ class TailorApplication implements ShouldQueue
     }
 
     /**
-     * Asks the AI until a response passes fact validation, discarding each one that doesn't, up to
-     * the regeneration limit.
+     * Asks the AI until a response is readable and passes fact validation, discarding each one that
+     * isn't, up to the regeneration limit.
      *
      * @return array<string, mixed>|null the first valid response, or null once every attempt failed
      *
@@ -154,7 +155,18 @@ class TailorApplication implements ShouldQueue
 
         for ($attempt = 1; $attempt <= $limit; $attempt++) {
             $throttle->recordCall();
-            $aiResponse = $ai->generate($prompt->text(), TailoringPrompt::responseSchema());
+
+            try {
+                $aiResponse = $ai->generate($prompt->text(), TailoringPrompt::responseSchema());
+            } catch (MalformedResponseException $e) {
+                $throttle->recordAnswered();
+                Log::warning("Application {$this->application->id}: tailoring attempt {$attempt} of {$limit} returned unreadable content.", [
+                    'error' => $e->getMessage(),
+                ]);
+
+                continue;
+            }
+
             $throttle->recordAnswered();
             $failures = $validator->failures($aiResponse);
 

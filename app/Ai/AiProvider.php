@@ -2,6 +2,7 @@
 
 namespace App\Ai;
 
+use App\Ai\Exceptions\MalformedResponseException;
 use App\Ai\Exceptions\ProviderException;
 use App\Ai\Exceptions\RateLimitedException;
 
@@ -15,7 +16,8 @@ interface AiProvider
      * @return array<string, mixed> the decoded response
      *
      * @throws RateLimitedException when the provider refuses the call for exceeding its rate limit
-     * @throws ProviderException when the call fails or the response can't be decoded
+     * @throws MalformedResponseException when the provider answers with content that can't be decoded
+     * @throws ProviderException when the call fails
      */
     public function generate(string $prompt, array $responseSchema): array;
 }
