@@ -291,10 +291,13 @@ class GlintsAdapter implements Adapter, RefreshesJobs
             salaryMin: $salary['minAmount'] ?? null,
             salaryMax: $salary['maxAmount'] ?? null,
             salaryCurrency: $salary['CurrencyCode'] ?? null,
-            // Glints also reports WEEK, DAY, HOUR, PROJECT and a blank mode, which have no SalaryPeriod.
             salaryPeriod: $salary === null ? null : match ($salary['salaryMode'] ?? null) {
                 'MONTH' => SalaryPeriod::Monthly,
                 'YEAR' => SalaryPeriod::Yearly,
+                'WEEK' => SalaryPeriod::Weekly,
+                'DAY' => SalaryPeriod::Daily,
+                'HOUR' => SalaryPeriod::Hourly,
+                'PROJECT' => SalaryPeriod::PerProject,
                 default => SalaryPeriod::Unspecified,
             },
             postedDate: $this->postedDate($posting),
@@ -391,20 +394,18 @@ class GlintsAdapter implements Adapter, RefreshesJobs
     }
 
     /**
-     * The base salary as reported, or the first salary if none is marked base.
+     * The base salary as reported, or else the first salary that isn't a bonus.
      *
      * @param  array<string, mixed>  $posting
      * @return array<string, mixed>|null
      */
     private function salary(array $posting): ?array
     {
-        $salaries = $posting['salaries'] ?? null;
+        $salaries = collect($posting['salaries'] ?? []);
 
-        if (empty($salaries)) {
-            return null;
-        }
-
-        return collect($salaries)->firstWhere('salaryType', 'BASIC') ?? $salaries[0];
+        // A bonus isn't base pay, so a posting offering only bonuses advertises no salary.
+        return $salaries->firstWhere('salaryType', 'BASIC')
+            ?? $salaries->first(fn ($salary) => ($salary['salaryType'] ?? null) !== 'BONUS');
     }
 
     /**

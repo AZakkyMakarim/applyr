@@ -74,6 +74,10 @@ class Job extends Model
         $period = match ($this->salary_period) {
             SalaryPeriod::Monthly => ' / month',
             SalaryPeriod::Yearly => ' / year',
+            SalaryPeriod::Weekly => ' / week',
+            SalaryPeriod::Daily => ' / day',
+            SalaryPeriod::Hourly => ' / hour',
+            SalaryPeriod::PerProject => ' / project',
             default => '',
         };
 

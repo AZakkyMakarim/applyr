@@ -123,6 +123,35 @@ class ApplicationsTest extends TestCase
             ->assertSeeInOrder(['Laravel Jakarta', '2026-09-10 08:30', 'Remote PHP', '2026-09-12 14:00']);
     }
 
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function salaryPeriods(): array
+    {
+        return [
+            'yearly' => ['yearly', 'IDR 150,000 – 250,000 / year'],
+            'weekly' => ['weekly', 'IDR 150,000 – 250,000 / week'],
+            'daily' => ['daily', 'IDR 150,000 – 250,000 / day'],
+            'hourly' => ['hourly', 'IDR 150,000 – 250,000 / hour'],
+            'per project' => ['per_project', 'IDR 150,000 – 250,000 / project'],
+        ];
+    }
+
+    #[DataProvider('salaryPeriods')]
+    public function test_the_detail_page_shows_the_salary_period(string $period, string $expectedRange): void
+    {
+        $application = $this->makeApplication([
+            'salary_min' => 150000,
+            'salary_max' => 250000,
+            'salary_currency' => 'IDR',
+            'salary_period' => $period,
+        ], ApplicationStatus::NeedsReview);
+
+        $this->get(route('applications.show', $application))
+            ->assertOk()
+            ->assertSee($expectedRange);
+    }
+
     public function test_an_unknown_application_is_not_found(): void
     {
         $this->get('/applications/999')->assertNotFound();

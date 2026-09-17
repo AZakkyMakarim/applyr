@@ -451,7 +451,7 @@ class GlintsPollingTest extends TestCase
     }
 
     /**
-     * Salary lists as live Glints postings report them.
+     * Salary lists as live Glints postings report them, plus weekly and per-project base salaries.
      *
      * @return array<string, array{list<array<string, mixed>>, SalaryPeriod, float|int}>
      */
@@ -460,10 +460,16 @@ class GlintsPollingTest extends TestCase
         return [
             'daily (654d5b11)' => [[
                 ['CurrencyCode' => 'IDR', 'maxAmount' => 250000, 'minAmount' => 150000, 'salaryMode' => 'DAY', 'salaryType' => 'BASIC'],
-            ], SalaryPeriod::Unspecified, 150000],
+            ], SalaryPeriod::Daily, 150000],
             'hourly (d92b26f7)' => [[
                 ['CurrencyCode' => 'IDR', 'maxAmount' => 400000, 'minAmount' => 390000, 'salaryMode' => 'HOUR', 'salaryType' => 'BASIC'],
-            ], SalaryPeriod::Unspecified, 390000],
+            ], SalaryPeriod::Hourly, 390000],
+            'weekly' => [[
+                ['CurrencyCode' => 'IDR', 'maxAmount' => 1500000, 'minAmount' => 1000000, 'salaryMode' => 'WEEK', 'salaryType' => 'BASIC'],
+            ], SalaryPeriod::Weekly, 1000000],
+            'per project' => [[
+                ['CurrencyCode' => 'IDR', 'maxAmount' => 5000000, 'minAmount' => 2000000, 'salaryMode' => 'PROJECT', 'salaryType' => 'BASIC'],
+            ], SalaryPeriod::PerProject, 2000000],
             'yearly (64b658c3)' => [[
                 ['CurrencyCode' => 'VND', 'maxAmount' => 15000000, 'minAmount' => 10000000, 'salaryMode' => 'YEAR', 'salaryType' => 'BONUS'],
                 ['CurrencyCode' => 'VND', 'maxAmount' => 15000000, 'minAmount' => 10000000, 'salaryMode' => 'YEAR', 'salaryType' => 'BASIC'],
@@ -498,6 +504,27 @@ class GlintsPollingTest extends TestCase
         $job = Job::where('external_id', self::SOFTWARE_ENGINEER_ID)->sole();
         $this->assertSame($period, $job->salary_period);
         $this->assertEquals($minimum, $job->salary_min);
+    }
+
+    public function test_a_posting_offering_only_bonuses_advertises_no_salary(): void
+    {
+        $page = $this->fixture('search-jobs.json');
+        // The bonuses of live postings 9f430571 and b017c03c, without their monthly base.
+        $page['data']['searchJobsV3']['jobsInPage'][0]['salaries'] = [
+            ['CurrencyCode' => 'IDR', 'maxAmount' => 1000000, 'minAmount' => 500000, 'salaryMode' => 'WEEK', 'salaryType' => 'BONUS'],
+            ['CurrencyCode' => 'IDR', 'maxAmount' => 5000000, 'minAmount' => 2000000, 'salaryMode' => 'PROJECT', 'salaryType' => 'BONUS'],
+        ];
+        $this->fakeGlints([$page]);
+        SearchProfile::factory()->create(['keyword' => ['software engineer'], 'location' => null]);
+
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        $job = Job::where('external_id', self::SOFTWARE_ENGINEER_ID)->sole();
+        $this->assertNull($job->salary_min);
+        $this->assertNull($job->salary_max);
+        $this->assertNull($job->salary_currency);
+        $this->assertNull($job->salary_period);
+        $this->assertNull($job->salaryRange());
     }
 
     public function test_paused_search_profiles_are_not_polled(): void

@@ -244,6 +244,7 @@ class JobStreetAdapter implements Adapter
             salaryPeriod: $salary === null ? null : match ($salary['period'] ?? null) {
                 'monthly' => SalaryPeriod::Monthly,
                 'annual' => SalaryPeriod::Yearly,
+                'hourly' => SalaryPeriod::Hourly,
                 default => SalaryPeriod::Unspecified,
             },
             postedDate: $this->postedDate($posting),

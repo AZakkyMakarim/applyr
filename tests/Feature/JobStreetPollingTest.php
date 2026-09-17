@@ -93,7 +93,7 @@ class JobStreetPollingTest extends TestCase
         $this->assertSame(JobType::FullTime, $hourly->job_type);
         $this->assertEquals(90000, $hourly->salary_min);
         $this->assertEquals(100000, $hourly->salary_max);
-        $this->assertSame(SalaryPeriod::Unspecified, $hourly->salary_period);
+        $this->assertSame(SalaryPeriod::Hourly, $hourly->salary_period);
 
         // Advertisers without a SEEK organisation still name the company.
         $this->assertSame('PT Mitra Indah Lestari', Job::where('external_id', self::NO_ORGANISATION_ID)->sole()->company_name);
