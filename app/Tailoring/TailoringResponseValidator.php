@@ -43,7 +43,7 @@ class TailoringResponseValidator
             'entries.*.entry_id' => ['required', 'string', 'distinct', Rule::in($achievementLimits->keys()->all())],
             'entries.*.description' => ['present', 'string'],
             'entries.*.achievements' => ['present', 'list'],
-            'entries.*.achievements.*' => ['string'],
+            'entries.*.achievements.*' => ['required', 'string'],
             'cover_letter' => ['required', 'array'],
             'cover_letter.opening_paragraph' => ['required', 'string'],
             'cover_letter.body_paragraphs' => ['required', 'list'],

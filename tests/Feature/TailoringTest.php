@@ -622,6 +622,8 @@ class TailoringTest extends TestCase
             'duplicated entry_id' => fn (array $c) => data_set($c, 'entries.1.entry_id', $c['entries'][0]['entry_id']),
             'more achievements than the experience has' => fn (array $c) => data_set($c, 'entries.0.achievements', ['One', 'Two', 'Invented three']),
             'achievements on an education' => fn (array $c) => data_set($c, 'entries.1.achievements', ['Invented']),
+            'empty achievement' => fn (array $c) => data_set($c, 'entries.0.achievements', ['', 'Reframed latency achievement']),
+            'blank achievement' => fn (array $c) => data_set($c, 'entries.0.achievements', ['Reframed latency achievement', '   ']),
             'empty professional summary' => fn (array $c) => data_set($c, 'professional_summary', '   '),
             'empty opening paragraph' => fn (array $c) => data_set($c, 'cover_letter.opening_paragraph', ''),
             'empty body paragraph' => fn (array $c) => data_set($c, 'cover_letter.body_paragraphs.1', ''),
