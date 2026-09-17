@@ -12,6 +12,7 @@ use App\Enums\PostDateRange;
 use App\Enums\SalaryPeriod;
 use App\Enums\WorkArrangement;
 use App\Enums\WorkArrangementFilter;
+use App\Models\AdapterHealth;
 use App\Models\Application;
 use App\Models\Job;
 use App\Models\SearchProfile;
@@ -35,6 +36,9 @@ class GlintsPollingTest extends TestCase
     private const HYBRID_INTERNSHIP_ID = 'a0c1f274-6977-4957-810d-0b733589e298';
 
     private string $locationResponse = 'search-locations.json';
+
+    /** @var array<string, array{0: array<string, mixed>, 1: int}> body and HTTP status Glints serves when a posting is fetched by id to refresh it */
+    private array $refreshedPostings = [];
 
     protected function platform(): Platform
     {
@@ -261,6 +265,89 @@ class GlintsPollingTest extends TestCase
         $this->assertSame(JobStatus::Closed, Job::where('external_id', self::HYBRID_INTERNSHIP_ID)->sole()->status);
     }
 
+    public function test_an_open_job_search_stops_returning_is_refreshed_by_id(): void
+    {
+        SearchProfile::factory()->create(['keyword' => ['software engineer'], 'location' => null]);
+        $this->fakeGlints();
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        // Search only serves OPEN postings, so once Glints closes one it just drops out of the results.
+        $page = $this->fixture('search-jobs.json');
+        array_shift($page['data']['searchJobsV3']['jobsInPage']);
+        $expired = $this->fixture('job-expired-00317faf-5b08-4ac9-bd9b-028662ed379b.json');
+        $expired['data']['getJobById']['id'] = self::SOFTWARE_ENGINEER_ID;
+        $this->refreshedPostings[self::SOFTWARE_ENGINEER_ID] = [$expired, 200];
+        $this->fakeGlints([$page]);
+
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        $job = Job::where('external_id', self::SOFTWARE_ENGINEER_ID)->sole();
+        $this->assertSame(JobStatus::Expired, $job->status);
+        $this->assertSame('CLOSED', $job->raw_payload['status']);
+        $this->assertSame(ApplicationStatus::PendingTailoring, $job->application->status);
+        $this->assertNull(AdapterHealth::for(Platform::Glints)->last_failure_category);
+
+        // Postings the search still returned were refreshed by it and aren't fetched again.
+        $refreshes = Http::recorded(fn (Request $request) => $request['operationName'] === 'refreshJob');
+        $this->assertSame([self::SOFTWARE_ENGINEER_ID], $refreshes->map(fn (array $pair) => $pair[0]['variables']['id'])->values()->all());
+    }
+
+    public function test_an_open_job_glints_no_longer_has_is_closed(): void
+    {
+        SearchProfile::factory()->create(['keyword' => ['software engineer'], 'location' => null]);
+        $this->fakeGlints();
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        $page = $this->fixture('search-jobs.json');
+        array_shift($page['data']['searchJobsV3']['jobsInPage']);
+        $this->refreshedPostings[self::SOFTWARE_ENGINEER_ID] = [$this->fixture('job-not-found.json'), 404];
+        $this->fakeGlints([$page]);
+
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        $job = Job::where('external_id', self::SOFTWARE_ENGINEER_ID)->sole();
+        $this->assertSame(JobStatus::Closed, $job->status);
+        $this->assertSame('software engineer', $job->title);
+        $this->assertNull(AdapterHealth::for(Platform::Glints)->last_failure_category);
+    }
+
+    public function test_jobs_already_closed_or_expired_are_not_refreshed(): void
+    {
+        SearchProfile::factory()->create(['keyword' => ['software engineer'], 'location' => null]);
+        $this->fakeGlints();
+        $this->artisan('applyr:poll')->assertSuccessful();
+        Job::where('external_id', self::SOFTWARE_ENGINEER_ID)->update(['status' => JobStatus::Expired]);
+        Job::where('external_id', self::REMOTE_FULLSTACK_ID)->update(['status' => JobStatus::Closed]);
+
+        $page = $this->fixture('search-jobs.json');
+        $page['data']['searchJobsV3']['jobsInPage'] = [];
+        $page['data']['searchJobsV3']['hasMore'] = false;
+        $this->refreshedPostings[self::HYBRID_INTERNSHIP_ID] = [$this->fixture('job-not-found.json'), 404];
+        $this->fakeGlints([$page]);
+
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        $refreshes = Http::recorded(fn (Request $request) => $request['operationName'] === 'refreshJob');
+        $this->assertSame([self::HYBRID_INTERNSHIP_ID], $refreshes->map(fn (array $pair) => $pair[0]['variables']['id'])->values()->all());
+    }
+
+    public function test_a_failed_refresh_fails_the_run(): void
+    {
+        SearchProfile::factory()->create(['keyword' => ['software engineer'], 'location' => null]);
+        $this->fakeGlints();
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        $page = $this->fixture('search-jobs.json');
+        array_shift($page['data']['searchJobsV3']['jobsInPage']);
+        $this->refreshedPostings[self::SOFTWARE_ENGINEER_ID] = [$this->fixture('graphql-validation-error.json'), 200];
+        $this->fakeGlints([$page]);
+
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        $this->assertSame(FailureCategory::ApiError, AdapterHealth::for(Platform::Glints)->last_failure_category);
+        $this->assertSame(JobStatus::Open, Job::where('external_id', self::SOFTWARE_ENGINEER_ID)->sole()->status);
+    }
+
     /**
      * Salary lists as live Glints postings report them.
      *
@@ -412,6 +499,7 @@ class GlintsPollingTest extends TestCase
                 'searchJobs' => $nextSearchPage(),
                 'searchHierarchicalLocations' => Http::response($this->fixture($this->locationResponse)),
                 'getJobById' => Http::response($this->fixture("job-detail-{$request['variables']['id']}.json")),
+                'refreshJob' => Http::response(...$this->refreshedPostings[$request['variables']['id']]),
             },
         );
     }

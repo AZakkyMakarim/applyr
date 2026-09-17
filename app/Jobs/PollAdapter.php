@@ -5,7 +5,9 @@ namespace App\Jobs;
 use App\Adapters\Adapter;
 use App\Adapters\AdapterRegistry;
 use App\Adapters\JobData;
+use App\Adapters\RefreshesJobs;
 use App\Enums\ApplicationStatus;
+use App\Enums\JobStatus;
 use App\Enums\Platform;
 use App\Jobs\Middleware\TracksAdapterHealth;
 use App\Models\Job;
@@ -45,12 +47,38 @@ class PollAdapter implements ShouldBeUnique, ShouldQueue
     public function handle(AdapterRegistry $adapters): void
     {
         $adapter = $adapters->for($this->platform);
+        $seen = [];
 
-        SearchProfile::query()->where('is_active', true)->each(function (SearchProfile $searchProfile) use ($adapter) {
+        SearchProfile::query()->where('is_active', true)->each(function (SearchProfile $searchProfile) use ($adapter, &$seen) {
             foreach ($adapter->search($searchProfile) as $jobData) {
                 $this->record($adapter, $searchProfile, $jobData);
+                $seen[$jobData->externalId] = true;
             }
         });
+
+        if ($adapter instanceof RefreshesJobs) {
+            $this->refreshUnseenOpenJobs($adapter, $seen);
+        }
+    }
+
+    /**
+     * Fetch each open Job this run's searches didn't return, since the search may just have
+     * stopped serving it after it closed.
+     *
+     * @param  array<string, true>  $seen  external ids the searches returned
+     */
+    private function refreshUnseenOpenJobs(RefreshesJobs $adapter, array $seen): void
+    {
+        $openJobs = Job::query()->where('platform', $this->platform)->where('status', JobStatus::Open);
+
+        foreach ($openJobs->lazyById() as $job) {
+            if (isset($seen[$job->external_id])) {
+                continue;
+            }
+
+            // A posting the platform no longer has can't be applied to any more.
+            $job->update($adapter->refresh($job->external_id)?->jobAttributes() ?? ['status' => JobStatus::Closed]);
+        }
     }
 
     /**

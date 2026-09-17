@@ -49,9 +49,10 @@ class GraphQlClient
      * GraphQL errors in the body are left for the caller, or data(), to judge.
      *
      * @param  array<string, mixed>  $variables
+     * @param  list<int>  $errorStatuses  HTTP error statuses whose body is returned for the caller to judge instead of thrown
      * @return array<string, mixed>
      */
-    public function send(string $operationName, string $query, array $variables): array
+    public function send(string $operationName, string $query, array $variables, array $errorStatuses = []): array
     {
         $this->pace();
 
@@ -69,7 +70,9 @@ class GraphQlClient
             throw new TransportException($this->platform, $e->getMessage(), previous: $e);
         }
 
-        $this->guardHttpFailure($response);
+        if (! in_array($response->status(), $errorStatuses, true)) {
+            $this->guardHttpFailure($response);
+        }
 
         $body = $response->json();
 

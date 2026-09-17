@@ -7,6 +7,7 @@ use App\Adapters\Exceptions\ApiErrorException;
 use App\Adapters\Exceptions\ShapeDriftException;
 use App\Adapters\GraphQlClient;
 use App\Adapters\JobData;
+use App\Adapters\RefreshesJobs;
 use App\Enums\JobStatus;
 use App\Enums\JobType;
 use App\Enums\JobTypeFilter;
@@ -21,7 +22,7 @@ use Throwable;
 /**
  * Glints job search through its internal GraphQL API (glints.com/api/v2/graphql).
  */
-class GlintsAdapter implements Adapter
+class GlintsAdapter implements Adapter, RefreshesJobs
 {
     private const ENDPOINT = 'https://glints.com/api/v2/graphql';
 
@@ -37,29 +38,28 @@ class GlintsAdapter implements Adapter
     // The largest page Glints serves; anonymous callers only get page 1.
     private const PAGE_SIZE = 50;
 
-    private const SEARCH_JOBS_QUERY = <<<'GRAPHQL'
-        query searchJobs($data: JobSearchConditionInput!) {
-          searchJobsV3(data: $data) {
-            hasMore
-            jobsInPage {
-              id title status type workArrangementOption isRemote source
-              createdAt updatedAt expiryDate closedAt
-              minYearsOfExperience maxYearsOfExperience educationLevel
-              descriptionJsonString externalApplyURL
-              CountryCode
-              company { id name brandName }
-              city { id name }
-              citySubDivision { id name }
-              country { code name }
-              location { id name formattedName level parents { id name formattedName level } }
-              salaries { salaryType salaryMode maxAmount minAmount CurrencyCode }
-              skills { skill { id name } mustHave }
-              benefits { benefit title description }
-              hierarchicalJobCategory { id level name }
-            }
-          }
-        }
+    // The posting fields toJobData() reads, selected alike by search and by refresh.
+    private const POSTING_FIELDS = <<<'GRAPHQL'
+        id title status type workArrangementOption isRemote source
+        createdAt updatedAt expiryDate closedAt
+        minYearsOfExperience maxYearsOfExperience educationLevel
+        descriptionJsonString externalApplyURL
+        CountryCode
+        company { id name brandName }
+        city { id name }
+        citySubDivision { id name }
+        country { code name }
+        location { id name formattedName level parents { id name formattedName level } }
+        salaries { salaryType salaryMode maxAmount minAmount CurrencyCode }
+        skills { skill { id name } mustHave }
+        benefits { benefit title description }
+        hierarchicalJobCategory { id level name }
         GRAPHQL;
+
+    private const SEARCH_JOBS_QUERY = 'query searchJobs($data: JobSearchConditionInput!) { searchJobsV3(data: $data) { hasMore jobsInPage { '
+        .self::POSTING_FIELDS.' } } }';
+
+    private const REFRESH_JOB_QUERY = 'query refreshJob($id: String!) { getJobById(id: $id) { '.self::POSTING_FIELDS.' } }';
 
     private const SEARCH_LOCATIONS_QUERY = <<<'GRAPHQL'
         query searchHierarchicalLocations($searchTerm: String, $countryCode: String, $searchType: String) {
@@ -135,6 +135,24 @@ class GlintsAdapter implements Adapter
         }
 
         return $this->flattenDescription($descriptionJson);
+    }
+
+    public function refresh(string $externalId): ?JobData
+    {
+        // Glints answers a posting it no longer has with HTTP 404 and a RECORD_NOT_FOUND error.
+        $body = $this->client->send('refreshJob', self::REFRESH_JOB_QUERY, ['id' => $externalId], errorStatuses: [404]);
+
+        if (($body['errors'][0]['extensions']['code'] ?? null) === 'RECORD_NOT_FOUND') {
+            return null;
+        }
+
+        $posting = $this->client->data($body)['getJobById'] ?? null;
+
+        if (! is_array($posting)) {
+            throw new ShapeDriftException(Platform::Glints, 'getJobById is missing.', 200);
+        }
+
+        return $this->toJobData($posting);
     }
 
     /**
