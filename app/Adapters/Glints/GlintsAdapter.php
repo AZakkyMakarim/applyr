@@ -124,13 +124,12 @@ class GlintsAdapter implements Adapter, RefreshesJobs
         return array_values($jobs);
     }
 
-    public function describe(JobData $jobData): string
+    public function describe(JobData $jobData): ?string
     {
         $body = $this->fetchJob('getJobById', self::JOB_DETAIL_QUERY, $jobData->externalId);
 
-        // A posting removed since the search has no detail left to fetch; refresh can close it once search drops it.
         if ($body === null) {
-            return '';
+            return null;
         }
 
         $descriptionJson = $this->client->data($body)['getJobById']['descriptionJsonString'] ?? null;

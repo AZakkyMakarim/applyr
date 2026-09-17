@@ -12,6 +12,7 @@ use App\Enums\PostDateRange;
 use App\Enums\SalaryPeriod;
 use App\Enums\WorkArrangement;
 use App\Enums\WorkArrangementFilter;
+use App\Jobs\TailorApplication;
 use App\Models\AdapterHealth;
 use App\Models\Application;
 use App\Models\Job;
@@ -20,6 +21,7 @@ use Closure;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Sleep;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\PollsAdapter;
@@ -101,7 +103,7 @@ class GlintsPollingTest extends TestCase
         }
     }
 
-    public function test_a_posting_deleted_before_it_is_described_is_stored_without_a_description(): void
+    public function test_a_posting_deleted_before_it_is_described_is_skipped(): void
     {
         $this->describedPostings[self::SOFTWARE_ENGINEER_ID] = [$this->fixture('job-not-found.json'), 404];
         $this->fakeGlints();
@@ -109,10 +111,12 @@ class GlintsPollingTest extends TestCase
 
         $this->artisan('applyr:poll')->assertSuccessful();
 
-        // One posting gone by the time it's described mustn't fail the run.
+        // One posting gone by the time it's described mustn't fail the run, nor be tailored.
         $this->assertNull(AdapterHealth::for(Platform::Glints)->last_failure_category);
-        $this->assertSame(3, Job::count());
-        $this->assertSame('', Job::where('external_id', self::SOFTWARE_ENGINEER_ID)->sole()->description);
+        $this->assertSame(2, Job::count());
+        $this->assertFalse(Job::where('external_id', self::SOFTWARE_ENGINEER_ID)->exists());
+        $this->assertSame(2, Application::count());
+        Queue::assertPushed(TailorApplication::class, 2);
     }
 
     public function test_normalization_covers_remote_hybrid_internship_and_unreported_salary(): void

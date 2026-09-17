@@ -122,8 +122,17 @@ class PollAdapter implements ShouldBeUnique, ShouldQueue
             ->where('external_id', $jobData->externalId)
             ->first();
 
+        $description = null;
+
         // Fetched before the transaction so no row is locked while waiting on the platform.
-        $description = $job === null ? $adapter->describe($jobData) : null;
+        if ($job === null) {
+            $description = $adapter->describe($jobData);
+
+            // Gone by the time it's described: skipped, not stored closed, so it never reaches tailoring.
+            if ($description === null) {
+                return;
+            }
+        }
 
         DB::transaction(function () use ($job, $description, $searchProfile, $jobData) {
             if ($job === null) {

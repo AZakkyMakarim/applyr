@@ -30,7 +30,10 @@ interface Adapter
      * Fetch a posting's full description as plain text. Called only for
      * postings not seen before, because search results may leave it out.
      *
+     * Returns null when the platform no longer has the posting, e.g. it was
+     * deleted between search and describe, and '' when it has no description.
+     *
      * @throws AdapterException
      */
-    public function describe(JobData $jobData): string;
+    public function describe(JobData $jobData): ?string;
 }
