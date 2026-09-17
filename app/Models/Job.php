@@ -35,6 +35,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'salary_period',
     'posted_date',
     'raw_payload',
+    'refreshed_at',
 ])]
 class Job extends Model
 {
@@ -94,6 +95,7 @@ class Job extends Model
             'max_years_experience' => 'integer',
             'posted_date' => 'datetime',
             'raw_payload' => 'array',
+            'refreshed_at' => 'datetime',
         ];
     }
 }

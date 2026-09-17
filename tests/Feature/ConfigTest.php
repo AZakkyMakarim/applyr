@@ -19,6 +19,7 @@ class ConfigTest extends TestCase
         'APPLYR_REGENERATION_LIMIT',
         'APPLYR_ADAPTER_PAGE_CAP',
         'APPLYR_ADAPTER_REQUEST_DELAY_MS',
+        'APPLYR_ADAPTER_REFRESH_CAP',
     ];
 
     private array $originalEnv = [];
@@ -56,6 +57,7 @@ class ConfigTest extends TestCase
         $this->assertSame(3, config('applyr.tailoring.regeneration_limit'));
         $this->assertSame(5, config('applyr.adapters.page_cap'));
         $this->assertSame(2000, config('applyr.adapters.request_delay_ms'));
+        $this->assertSame(50, config('applyr.adapters.refresh_cap'));
         $this->assertSame(8, config('services.gemini.rate_limit_per_minute'));
         $this->assertSame('gemini-2.5-flash', config('services.gemini.model'));
         $this->assertNull(config('services.gemini.api_key'));
@@ -75,6 +77,7 @@ class ConfigTest extends TestCase
             'APPLYR_REGENERATION_LIMIT' => '5',
             'APPLYR_ADAPTER_PAGE_CAP' => '2',
             'APPLYR_ADAPTER_REQUEST_DELAY_MS' => '500',
+            'APPLYR_ADAPTER_REFRESH_CAP' => '10',
         ]);
 
         $this->assertSame('bot-token', config('services.telegram.bot_token'));
@@ -86,6 +89,7 @@ class ConfigTest extends TestCase
         $this->assertSame(5, config('applyr.tailoring.regeneration_limit'));
         $this->assertSame(2, config('applyr.adapters.page_cap'));
         $this->assertSame(500, config('applyr.adapters.request_delay_ms'));
+        $this->assertSame(10, config('applyr.adapters.refresh_cap'));
     }
 
     /**

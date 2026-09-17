@@ -4,6 +4,8 @@ namespace App\Jobs;
 
 use App\Adapters\Adapter;
 use App\Adapters\AdapterRegistry;
+use App\Adapters\Exceptions\ApiErrorException;
+use App\Adapters\Exceptions\ShapeDriftException;
 use App\Adapters\JobData;
 use App\Adapters\RefreshesJobs;
 use App\Enums\ApplicationStatus;
@@ -16,6 +18,7 @@ use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * One run of one Adapter across every active SearchProfile. Runs for the same
@@ -62,22 +65,50 @@ class PollAdapter implements ShouldBeUnique, ShouldQueue
     }
 
     /**
-     * Fetch each open Job this run's searches didn't return, since the search may just have
-     * stopped serving it after it closed.
+     * Fetch the open Jobs this run's searches didn't return, since the search may just have
+     * stopped serving them after they closed. Only the longest-unrefreshed few are fetched per
+     * run, so every one gets its turn over later runs without a run outgrowing its timeout.
      *
      * @param  array<string, true>  $seen  external ids the searches returned
      */
     private function refreshUnseenOpenJobs(RefreshesJobs $adapter, array $seen): void
     {
-        $openJobs = Job::query()->where('platform', $this->platform)->where('status', JobStatus::Open);
+        $unseenOpenJobs = Job::query()
+            ->where('platform', $this->platform)
+            ->where('status', JobStatus::Open)
+            ->whereNotIn('external_id', array_keys($seen))
+            ->orderBy('refreshed_at')
+            ->orderBy('id')
+            ->limit(config('applyr.adapters.refresh_cap'))
+            ->get();
 
-        foreach ($openJobs->lazyById() as $job) {
-            if (isset($seen[$job->external_id])) {
+        $lastFailure = null;
+        $refreshedAny = false;
+
+        foreach ($unseenOpenJobs as $job) {
+            try {
+                $jobData = $adapter->refresh($job->external_id);
+            } catch (ApiErrorException|ShapeDriftException $e) {
+                // One posting's bad answer mustn't fail the run, which would pause search too.
+                // Blocks and transport failures still do: further requests won't fare better.
+                $lastFailure = $e;
+                Log::warning("{$this->platform->label()} Job {$job->external_id} was not refreshed.", ['error' => $e->getMessage()]);
+                $job->update(['refreshed_at' => now()]);
+
                 continue;
             }
 
             // A posting the platform no longer has can't be applied to any more.
-            $job->update($adapter->refresh($job->external_id)?->jobAttributes() ?? ['status' => JobStatus::Closed]);
+            $attributes = $jobData?->jobAttributes() ?? ['status' => JobStatus::Closed];
+
+            $job->update([...$attributes, 'refreshed_at' => now()]);
+            $refreshedAny = true;
+        }
+
+        // When several postings all fail, refresh itself is broken rather than one posting, so the
+        // run fails and counts toward pausing the Adapter instead of leaving open Jobs silently stale.
+        if ($lastFailure !== null && ! $refreshedAny && $unseenOpenJobs->count() >= 2) {
+            throw $lastFailure;
         }
     }
 
@@ -101,13 +132,14 @@ class PollAdapter implements ShouldBeUnique, ShouldQueue
                     'platform' => $this->platform,
                     'external_id' => $jobData->externalId,
                     'description' => $description,
+                    'refreshed_at' => now(),
                 ]);
 
                 $application = $job->application()->create(['status' => ApplicationStatus::PendingTailoring]);
 
                 TailorApplication::dispatch($application)->afterCommit();
             } else {
-                $job->update($jobData->jobAttributes());
+                $job->update([...$jobData->jobAttributes(), 'refreshed_at' => now()]);
             }
 
             if (! $job->searchProfiles()->whereKey($searchProfile->getKey())->exists()) {

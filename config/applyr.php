@@ -14,6 +14,10 @@ return [
 
         // Pause between consecutive requests to one platform, in milliseconds.
         'request_delay_ms' => (int) env('APPLYR_ADAPTER_REQUEST_DELAY_MS', 2000),
+
+        // Maximum open Jobs an Adapter fetches by id per run because its searches
+        // stopped returning them; the longest-unrefreshed go first.
+        'refresh_cap' => (int) env('APPLYR_ADAPTER_REFRESH_CAP', 50),
     ],
 
     'tailoring' => [

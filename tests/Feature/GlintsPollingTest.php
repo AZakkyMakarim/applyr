@@ -319,9 +319,7 @@ class GlintsPollingTest extends TestCase
         Job::where('external_id', self::SOFTWARE_ENGINEER_ID)->update(['status' => JobStatus::Expired]);
         Job::where('external_id', self::REMOTE_FULLSTACK_ID)->update(['status' => JobStatus::Closed]);
 
-        $page = $this->fixture('search-jobs.json');
-        $page['data']['searchJobsV3']['jobsInPage'] = [];
-        $page['data']['searchJobsV3']['hasMore'] = false;
+        $page = $this->emptySearchPage();
         $this->refreshedPostings[self::HYBRID_INTERNSHIP_ID] = [$this->fixture('job-not-found.json'), 404];
         $this->fakeGlints([$page]);
 
@@ -331,7 +329,48 @@ class GlintsPollingTest extends TestCase
         $this->assertSame([self::HYBRID_INTERNSHIP_ID], $refreshes->map(fn (array $pair) => $pair[0]['variables']['id'])->values()->all());
     }
 
-    public function test_a_failed_refresh_fails_the_run(): void
+    public function test_refreshes_glints_answers_with_an_error_or_drifted_shape_are_skipped(): void
+    {
+        SearchProfile::factory()->create(['keyword' => ['software engineer'], 'location' => null]);
+        $this->fakeGlints();
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        $page = $this->emptySearchPage();
+        $this->refreshedPostings[self::SOFTWARE_ENGINEER_ID] = [$this->fixture('graphql-validation-error.json'), 200];
+        $this->refreshedPostings[self::REMOTE_FULLSTACK_ID] = [['data' => ['getJobById' => null]], 200];
+        $this->refreshedPostings[self::HYBRID_INTERNSHIP_ID] = [$this->fixture('job-not-found.json'), 404];
+        $this->fakeGlints([$page]);
+
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        // One posting's bad answer doesn't fail the run, which would pause search along with it.
+        $this->assertNull(AdapterHealth::for(Platform::Glints)->last_failure_category);
+        $this->assertSame(JobStatus::Open, Job::where('external_id', self::SOFTWARE_ENGINEER_ID)->sole()->status);
+        $this->assertSame(JobStatus::Open, Job::where('external_id', self::REMOTE_FULLSTACK_ID)->sole()->status);
+        $this->assertSame(JobStatus::Closed, Job::where('external_id', self::HYBRID_INTERNSHIP_ID)->sole()->status);
+    }
+
+    public function test_the_run_fails_when_every_one_of_several_refreshes_fails(): void
+    {
+        SearchProfile::factory()->create(['keyword' => ['software engineer'], 'location' => null]);
+        $this->fakeGlints();
+        $this->artisan('applyr:poll')->assertSuccessful();
+        Job::where('external_id', self::HYBRID_INTERNSHIP_ID)->update(['status' => JobStatus::Closed]);
+
+        $page = $this->emptySearchPage();
+        $this->refreshedPostings[self::SOFTWARE_ENGINEER_ID] = [$this->fixture('graphql-validation-error.json'), 200];
+        $this->refreshedPostings[self::REMOTE_FULLSTACK_ID] = [['data' => ['getJobById' => null]], 200];
+        $this->fakeGlints([$page]);
+
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        // Refresh itself is broken, not one posting, so it counts toward pausing the Adapter.
+        $this->assertSame(FailureCategory::ShapeDrift, AdapterHealth::for(Platform::Glints)->last_failure_category);
+        $refreshes = Http::recorded(fn (Request $request) => $request['operationName'] === 'refreshJob');
+        $this->assertCount(2, $refreshes);
+    }
+
+    public function test_a_lone_refresh_that_fails_is_skipped(): void
     {
         SearchProfile::factory()->create(['keyword' => ['software engineer'], 'location' => null]);
         $this->fakeGlints();
@@ -344,8 +383,54 @@ class GlintsPollingTest extends TestCase
 
         $this->artisan('applyr:poll')->assertSuccessful();
 
-        $this->assertSame(FailureCategory::ApiError, AdapterHealth::for(Platform::Glints)->last_failure_category);
+        $this->assertNull(AdapterHealth::for(Platform::Glints)->last_failure_category);
         $this->assertSame(JobStatus::Open, Job::where('external_id', self::SOFTWARE_ENGINEER_ID)->sole()->status);
+    }
+
+    public function test_a_refresh_glints_blocks_fails_the_run(): void
+    {
+        SearchProfile::factory()->create(['keyword' => ['software engineer'], 'location' => null]);
+        $this->fakeGlints();
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        $page = $this->emptySearchPage();
+        $this->refreshedPostings[self::SOFTWARE_ENGINEER_ID] = [['message' => 'Too many requests'], 429];
+        $this->refreshedPostings[self::REMOTE_FULLSTACK_ID] = [$this->fixture('job-not-found.json'), 404];
+        $this->refreshedPostings[self::HYBRID_INTERNSHIP_ID] = [$this->fixture('job-not-found.json'), 404];
+        $this->fakeGlints([$page]);
+
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        $this->assertSame(FailureCategory::AntiBot, AdapterHealth::for(Platform::Glints)->last_failure_category);
+        $refreshes = Http::recorded(fn (Request $request) => $request['operationName'] === 'refreshJob');
+        $this->assertCount(1, $refreshes);
+    }
+
+    public function test_refreshes_per_poll_are_capped_and_the_longest_unrefreshed_jobs_go_first(): void
+    {
+        config(['applyr.adapters.refresh_cap' => 2]);
+        SearchProfile::factory()->create(['keyword' => ['software engineer'], 'location' => null]);
+        $this->fakeGlints();
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        // The search stops returning all three, though each is still open when fetched by id.
+        foreach ($this->fixture('search-jobs.json')['data']['searchJobsV3']['jobsInPage'] as $posting) {
+            $this->refreshedPostings[$posting['id']] = [['data' => ['getJobById' => $posting]], 200];
+        }
+        $this->fakeGlints([$this->emptySearchPage()]);
+        $idsInPollOrder = Job::orderBy('id')->pluck('external_id')->all();
+
+        $refreshedIds = fn () => Http::recorded(fn (Request $request) => $request['operationName'] === 'refreshJob')
+            ->map(fn (array $pair) => $pair[0]['variables']['id'])->values()->all();
+
+        $this->travel(1)->hours();
+        $this->artisan('applyr:poll')->assertSuccessful();
+        $this->assertSame(array_slice($idsInPollOrder, 0, 2), $refreshedIds());
+
+        $this->travel(1)->hours();
+        $this->artisan('applyr:poll')->assertSuccessful();
+        $this->assertSame([...array_slice($idsInPollOrder, 0, 2), $idsInPollOrder[2], $idsInPollOrder[0]], $refreshedIds());
+        $this->assertSame(3, Job::where('status', JobStatus::Open)->count());
     }
 
     /**
@@ -483,6 +568,20 @@ class GlintsPollingTest extends TestCase
 
         $this->assertCount(1, $events);
         $this->assertSame(config('applyr.polling.schedule'), $events->first()->expression);
+    }
+
+    /**
+     * A search response with no postings, as when every stored Job has dropped out of the results.
+     *
+     * @return array<string, mixed>
+     */
+    private function emptySearchPage(): array
+    {
+        $page = $this->fixture('search-jobs.json');
+        $page['data']['searchJobsV3']['jobsInPage'] = [];
+        $page['data']['searchJobsV3']['hasMore'] = false;
+
+        return $page;
     }
 
     /**
