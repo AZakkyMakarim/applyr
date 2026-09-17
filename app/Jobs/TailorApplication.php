@@ -21,11 +21,13 @@ use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Throwable;
 
 /**
  * Generates an Application's TailoredApplication with the AI provider, renders both PDFs,
  * and hands the Application to the user for review. An AI response that can't be decoded or fails fact
- * validation is regenerated, and never rendered or stored. A failed AI call fails the job.
+ * validation is regenerated, and never rendered or stored. A failed AI call fails the job, and a failed job
+ * marks the Application tailoring_failed so the user can Retry it.
  *
  * AI calls are throttled: tailoring that finds the rate limit spent, or that meets a 429, is released
  * back to the queue to run again later, and a release never counts as a failed validation attempt.
@@ -139,6 +141,16 @@ class TailorApplication implements ShouldQueue
             '',
             route('applications.show', $application),
         ])));
+    }
+
+    /**
+     * Runs once the job has failed for good: an AI or render error, or a day of releases running out.
+     * Without it the Application would sit in pending_tailoring with nothing left to tailor it.
+     * A reject saved meanwhile stands.
+     */
+    public function failed(?Throwable $exception): void
+    {
+        $this->application->refresh()->transitionTo(ApplicationStatus::TailoringFailed);
     }
 
     /**

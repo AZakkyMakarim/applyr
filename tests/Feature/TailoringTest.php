@@ -26,6 +26,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Sleep;
 use PHPUnit\Framework\Attributes\DataProvider;
+use RuntimeException;
 use Tests\Fakes\FakePdfRenderer;
 use Tests\TestCase;
 
@@ -527,7 +528,54 @@ class TailoringTest extends TestCase
         }
 
         $this->assertCount(1, $this->geminiRequests());
-        $this->assertSame(ApplicationStatus::PendingTailoring, $application->fresh()->status);
+    }
+
+    public function test_tailoring_that_fails_on_a_gemini_error_marks_the_application_tailoring_failed(): void
+    {
+        $application = $this->applicationFor('gemini-error-failed');
+        $this->fakeGeminiSequence(500);
+
+        try {
+            TailorApplication::dispatch($application);
+            $this->fail('A Gemini HTTP error should fail the job.');
+        } catch (ProviderException) {
+        }
+
+        $this->assertSame(ApplicationStatus::TailoringFailed, $application->fresh()->status);
+        $this->assertSame(0, TailoredApplication::count());
+    }
+
+    public function test_tailoring_that_fails_to_render_its_pdfs_marks_the_application_tailoring_failed(): void
+    {
+        $application = $this->applicationFor('render-error');
+        $this->fakeGeminiSequence($this->validContent());
+        $this->app->instance(PdfRenderer::class, new class implements PdfRenderer
+        {
+            public function render(string $html, string $path): string
+            {
+                throw new RuntimeException('Chrome crashed.');
+            }
+        });
+
+        try {
+            TailorApplication::dispatch($application);
+            $this->fail('A PDF render error should fail the job.');
+        } catch (RuntimeException) {
+        }
+
+        $this->assertSame(ApplicationStatus::TailoringFailed, $application->fresh()->status);
+        $this->assertSame(0, TailoredApplication::count());
+    }
+
+    public function test_tailoring_that_fails_after_a_reject_leaves_the_application_rejected(): void
+    {
+        $application = $this->applicationFor('rejected-then-failed');
+        $tailoring = new TailorApplication($application);
+        $application->transitionTo(ApplicationStatus::Rejected);
+
+        $tailoring->failed(new ProviderException('Gemini is down.'));
+
+        $this->assertSame(ApplicationStatus::Rejected, $application->fresh()->status);
     }
 
     public function test_the_number_of_attempts_comes_from_the_regeneration_limit(): void
