@@ -132,6 +132,13 @@ class PollAdapter implements ShouldBeUnique, ShouldQueue
             if ($description === null) {
                 return;
             }
+
+            // Nothing to tailor from: skipped too, and described again by the next poll that returns it.
+            if (trim($description) === '') {
+                Log::info("{$this->platform->label()} Job {$jobData->externalId} was skipped: it has no description.");
+
+                return;
+            }
         }
 
         DB::transaction(function () use ($job, $description, $searchProfile, $jobData) {

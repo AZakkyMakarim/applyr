@@ -12,6 +12,7 @@ use App\Enums\PostDateRange;
 use App\Enums\SalaryPeriod;
 use App\Enums\WorkArrangement;
 use App\Enums\WorkArrangementFilter;
+use App\Jobs\TailorApplication;
 use App\Models\AdapterHealth;
 use App\Models\Application;
 use App\Models\Job;
@@ -20,6 +21,7 @@ use Closure;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 use Tests\Concerns\PollsAdapter;
@@ -77,6 +79,30 @@ class JobStreetPollingTest extends TestCase
         $this->assertSame('monthly', $job->salary_period->value);
         $this->assertSame('2026-09-16 09:36:13', $job->posted_date->utc()->format('Y-m-d H:i:s'));
         $this->assertSame($this->fixture('search-jobs-page-1.json')['data']['jobSearchV7']['results']['jobs'][0], $job->raw_payload);
+    }
+
+    public function test_a_posting_with_a_blank_abstract_is_skipped_until_it_has_one(): void
+    {
+        $page = $this->fixture('search-jobs-page-1.json');
+        $blank = $page;
+        $blank['data']['jobSearchV7']['results']['jobs'][0]['abstract'] = ' ';
+        $this->fakeJobStreet([$blank, $this->fixture('search-jobs-no-results.json')]);
+        SearchProfile::factory()->create(['keyword' => ['software engineer'], 'location' => null, 'country_code' => 'ID']);
+
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        // Nothing to tailor from, so no Application reaches the AI or the user.
+        $jobCount = count($page['data']['jobSearchV7']['results']['jobs']);
+        $this->assertFalse(Job::where('external_id', self::QA_ENGINEER_ID)->exists());
+        $this->assertSame($jobCount - 1, Application::count());
+        Queue::assertPushed(TailorApplication::class, $jobCount - 1);
+
+        // Stored once a later search returns its abstract.
+        $this->fakeJobStreet([$page, $this->fixture('search-jobs-no-results.json')]);
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        $this->assertSame($page['data']['jobSearchV7']['results']['jobs'][0]['abstract'], Job::where('external_id', self::QA_ENGINEER_ID)->sole()->description);
+        $this->assertSame($jobCount, Application::count());
     }
 
     public function test_normalization_covers_hybrid_remote_and_non_monthly_salaries(): void

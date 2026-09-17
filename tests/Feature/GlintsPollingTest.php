@@ -119,6 +119,52 @@ class GlintsPollingTest extends TestCase
         Queue::assertPushed(TailorApplication::class, 2);
     }
 
+    /**
+     * @return array<string, array{0: string|null}>
+     */
+    public static function blankDescriptions(): array
+    {
+        return [
+            'no description' => [null],
+            'only empty blocks' => ['{"blocks":[{"key":"a","text":"  ","type":"unstyled","depth":0,"entityRanges":[],"inlineStyleRanges":[],"data":{}}],"entityMap":{}}'],
+        ];
+    }
+
+    #[DataProvider('blankDescriptions')]
+    public function test_a_posting_described_without_a_description_is_skipped_until_it_has_one(?string $descriptionJson): void
+    {
+        $posting = $this->fixture('job-detail-'.self::SOFTWARE_ENGINEER_ID.'.json');
+        $blank = $posting;
+        $blank['data']['getJobById']['descriptionJsonString'] = $descriptionJson;
+        $this->describedPostings[self::SOFTWARE_ENGINEER_ID] = [$blank, 200];
+        $this->fakeGlints();
+        SearchProfile::factory()->create(['keyword' => ['software engineer'], 'location' => null]);
+
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        // Nothing to tailor from: no Job, so no Application reaches the AI or the user.
+        $this->assertNull(AdapterHealth::for(Platform::Glints)->last_failure_category);
+        $this->assertFalse(Job::where('external_id', self::SOFTWARE_ENGINEER_ID)->exists());
+        $this->assertSame(2, Application::count());
+        Queue::assertPushed(TailorApplication::class, 2);
+
+        // Described again on the next poll, and stored once Glints serves a description.
+        $this->describedPostings[self::SOFTWARE_ENGINEER_ID] = [$posting, 200];
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        $this->assertStringStartsWith("Qualifications\n", Job::where('external_id', self::SOFTWARE_ENGINEER_ID)->sole()->description);
+        $this->assertSame(3, Application::count());
+    }
+
+    public function test_a_description_answer_missing_the_posting_fails_the_run_as_shape_drift(): void
+    {
+        // A null getJobById without errors is drift, as it is for refresh, not a posting with no description.
+        $this->describedPostings[self::SOFTWARE_ENGINEER_ID] = [['data' => ['getJobById' => null]], 200];
+        $this->fakeGlints();
+
+        $this->assertPollFails(FailureCategory::ShapeDrift);
+    }
+
     public function test_normalization_covers_remote_hybrid_internship_and_unreported_salary(): void
     {
         $this->fakeGlints();

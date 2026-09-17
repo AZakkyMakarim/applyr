@@ -132,7 +132,7 @@ class GlintsAdapter implements Adapter, RefreshesJobs
             return null;
         }
 
-        $descriptionJson = $this->client->data($body)['getJobById']['descriptionJsonString'] ?? null;
+        $descriptionJson = $this->posting($body)['descriptionJsonString'] ?? null;
 
         if ($descriptionJson === null) {
             return '';
@@ -149,13 +149,7 @@ class GlintsAdapter implements Adapter, RefreshesJobs
             return null;
         }
 
-        $posting = $this->client->data($body)['getJobById'] ?? null;
-
-        if (! is_array($posting)) {
-            throw new ShapeDriftException(Platform::Glints, 'getJobById is missing.', 200);
-        }
-
-        return $this->toJobData($posting);
+        return $this->toJobData($this->posting($body));
     }
 
     /**
@@ -169,6 +163,23 @@ class GlintsAdapter implements Adapter, RefreshesJobs
         $body = $this->client->send($operationName, $query, ['id' => $externalId], errorStatuses: [404]);
 
         return ($body['errors'][0]['extensions']['code'] ?? null) === 'RECORD_NOT_FOUND' ? null : $body;
+    }
+
+    /**
+     * The posting a getJobById body carries. Without errors, a missing one is drift, not a deleted posting.
+     *
+     * @param  array<string, mixed>  $body
+     * @return array<string, mixed>
+     */
+    private function posting(array $body): array
+    {
+        $posting = $this->client->data($body)['getJobById'] ?? null;
+
+        if (! is_array($posting)) {
+            throw new ShapeDriftException(Platform::Glints, 'getJobById is missing.', 200);
+        }
+
+        return $posting;
     }
 
     /**
