@@ -125,10 +125,14 @@ class GlintsAdapter implements Adapter, RefreshesJobs
 
     public function describe(JobData $jobData): string
     {
-        $data = $this->client->query('getJobById', self::JOB_DETAIL_QUERY, ['id' => $jobData->externalId]);
+        $body = $this->fetchJob('getJobById', self::JOB_DETAIL_QUERY, $jobData->externalId);
 
-        // A posting removed since the search has no detail left to fetch.
-        $descriptionJson = $data['getJobById']['descriptionJsonString'] ?? null;
+        // A posting removed since the search has no detail left to fetch; refresh can close it once search drops it.
+        if ($body === null) {
+            return '';
+        }
+
+        $descriptionJson = $this->client->data($body)['getJobById']['descriptionJsonString'] ?? null;
 
         if ($descriptionJson === null) {
             return '';
@@ -139,10 +143,9 @@ class GlintsAdapter implements Adapter, RefreshesJobs
 
     public function refresh(string $externalId): ?JobData
     {
-        // Glints answers a posting it no longer has with HTTP 404 and a RECORD_NOT_FOUND error.
-        $body = $this->client->send('refreshJob', self::REFRESH_JOB_QUERY, ['id' => $externalId], errorStatuses: [404]);
+        $body = $this->fetchJob('refreshJob', self::REFRESH_JOB_QUERY, $externalId);
 
-        if (($body['errors'][0]['extensions']['code'] ?? null) === 'RECORD_NOT_FOUND') {
+        if ($body === null) {
             return null;
         }
 
@@ -153,6 +156,19 @@ class GlintsAdapter implements Adapter, RefreshesJobs
         }
 
         return $this->toJobData($posting);
+    }
+
+    /**
+     * Send a getJobById operation and return its body, or null when Glints no longer has the posting.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function fetchJob(string $operationName, string $query, string $externalId): ?array
+    {
+        // Glints answers a posting it no longer has with HTTP 404 and a RECORD_NOT_FOUND error.
+        $body = $this->client->send($operationName, $query, ['id' => $externalId], errorStatuses: [404]);
+
+        return ($body['errors'][0]['extensions']['code'] ?? null) === 'RECORD_NOT_FOUND' ? null : $body;
     }
 
     /**

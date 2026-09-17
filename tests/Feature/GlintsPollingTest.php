@@ -40,6 +40,9 @@ class GlintsPollingTest extends TestCase
     /** @var array<string, array{0: array<string, mixed>, 1: int}> body and HTTP status Glints serves when a posting is fetched by id to refresh it */
     private array $refreshedPostings = [];
 
+    /** @var array<string, array{0: array<string, mixed>, 1: int}> body and HTTP status Glints serves in place of a posting's job-detail fixture when it's described */
+    private array $describedPostings = [];
+
     protected function platform(): Platform
     {
         return Platform::Glints;
@@ -96,6 +99,20 @@ class GlintsPollingTest extends TestCase
             $this->assertEquals([$searchProfile->id], $job->searchProfiles->modelKeys());
             $this->assertEquals(now(), $job->searchProfiles->first()->pivot->matched_at);
         }
+    }
+
+    public function test_a_posting_deleted_before_it_is_described_is_stored_without_a_description(): void
+    {
+        $this->describedPostings[self::SOFTWARE_ENGINEER_ID] = [$this->fixture('job-not-found.json'), 404];
+        $this->fakeGlints();
+        SearchProfile::factory()->create(['keyword' => ['software engineer'], 'location' => null]);
+
+        $this->artisan('applyr:poll')->assertSuccessful();
+
+        // One posting gone by the time it's described mustn't fail the run.
+        $this->assertNull(AdapterHealth::for(Platform::Glints)->last_failure_category);
+        $this->assertSame(3, Job::count());
+        $this->assertSame('', Job::where('external_id', self::SOFTWARE_ENGINEER_ID)->sole()->description);
     }
 
     public function test_normalization_covers_remote_hybrid_internship_and_unreported_salary(): void
@@ -597,7 +614,8 @@ class GlintsPollingTest extends TestCase
             fn (Request $request, Closure $nextSearchPage) => match ($request['operationName']) {
                 'searchJobs' => $nextSearchPage(),
                 'searchHierarchicalLocations' => Http::response($this->fixture($this->locationResponse)),
-                'getJobById' => Http::response($this->fixture("job-detail-{$request['variables']['id']}.json")),
+                'getJobById' => Http::response(...$this->describedPostings[$request['variables']['id']]
+                    ?? [$this->fixture("job-detail-{$request['variables']['id']}.json")]),
                 'refreshJob' => Http::response(...$this->refreshedPostings[$request['variables']['id']]),
             },
         );
