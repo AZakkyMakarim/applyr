@@ -78,7 +78,8 @@ class DocumentSnapshots
 
     /**
      * Entries keyed by their entry_id, newest first. The AI's text replaces only the fields the
-     * entry lets it reframe; anything it didn't return keeps the MasterProfile text.
+     * entry lets it reframe; anything it didn't return, or a blank description, keeps the
+     * MasterProfile text. Empty achievements are kept: the AI may curate them down to none.
      *
      * @param  Collection<int, MasterProfileEntry>  $entries
      * @return array<string, array<string, mixed>>
@@ -89,11 +90,16 @@ class DocumentSnapshots
 
         return $entries->mapWithKeys(function (MasterProfileEntry $entry) use ($reframed) {
             $original = $entry->reframeableText();
+            $reframedText = array_intersect_key($reframed->get($entry->tailoringEntryId(), []), $original);
+
+            if (blank($reframedText['description'] ?? null)) {
+                unset($reframedText['description']);
+            }
 
             return [$entry->tailoringEntryId() => [
                 'entry_id' => $entry->tailoringEntryId(),
                 ...$entry->tailoringFacts(),
-                ...array_replace($original, array_intersect_key($reframed->get($entry->tailoringEntryId(), []), $original)),
+                ...array_replace($original, $reframedText),
             ]];
         })->all();
     }

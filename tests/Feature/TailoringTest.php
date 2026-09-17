@@ -616,6 +616,26 @@ class TailoringTest extends TestCase
         $this->assertSame(['Polls two job boards'], $cv['projects']["project:{$this->project->id}"]['achievements']);
     }
 
+    public function test_a_blank_reframed_description_keeps_the_master_profile_text_but_empty_achievements_stay_curated(): void
+    {
+        $application = $this->applicationFor('blank-entry-text');
+        $content = $this->validContent();
+        $content['entries'][0]['description'] = '';
+        $content['entries'][0]['achievements'] = [];
+        $content['entries'][2]['description'] = '   ';
+        $this->fakeGeminiSequence($content);
+
+        TailorApplication::dispatch($application);
+
+        $this->assertSame(ApplicationStatus::NeedsReview, $application->fresh()->status);
+        $cv = $application->fresh()->currentTailoredApplication->cv_data;
+        $this->assertSame('Built the payments platform.', $cv['experiences']["experience:{$this->experience->id}"]['description']);
+        $this->assertSame([], $cv['experiences']["experience:{$this->experience->id}"]['achievements']);
+        $this->assertSame('Valid education description.', $cv['educations']["education:{$this->education->id}"]['description']);
+        $this->assertSame('Job-application assistant.', $cv['projects']["project:{$this->project->id}"]['description']);
+        $this->assertCount(1, $this->geminiRequests());
+    }
+
     public function test_facts_in_the_snapshot_equal_the_master_profile_whatever_the_ai_returns(): void
     {
         $application = $this->applicationFor('rewritten-facts');
